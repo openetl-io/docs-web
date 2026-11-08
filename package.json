@@ -1,0 +1,48 @@
+{
+  "name": "docs-web",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.2.1",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "fetch-docs": "node scripts/fetch.mjs",
+    "dev": "next dev",
+    "dev:local": "node scripts/fetch.mjs --local --dev",
+    "build": "next build",
+    "postbuild": "node scripts/check-links.mjs",
+    "preview": "serve out",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
+    "@fumadocs/changelog": "0.1.0",
+    "fumadocs-core": "16.18.1",
+    "fumadocs-mdx": "15.5.0",
+    "fumadocs-openapi": "12.6.0",
+    "fumadocs-ui": "16.18.1",
+    "lucide-react": "1.69.0",
+    "mermaid": "12.2.0",
+    "next": "16.4.5",
+    "next-themes": "0.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.4",
+    "@types/mdast": "4.0.4",
+    "@types/mdx": "2.0.14",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "mdast-util-mdx-jsx": "3.2.1",
+    "postcss": "8.5.32",
+    "serve": "14.2.6",
+    "tailwindcss": "4.3.4",
+    "typescript": "7.0.2",
+    "unist-util-visit": "5.1.0"
+  }
+}
