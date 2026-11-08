@@ -147,3 +147,16 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# The site
+.next/
+out/
+.source/
+next-env.d.ts
+.cache/
+# Fetched by scripts/fetch.mjs
+content/
+generated/
+public/schemas/
+public/logos/
+public/_redirects
