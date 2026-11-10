@@ -12,7 +12,7 @@ export default function ChangelogPage() {
   const changelog = readChangelog();
   const entries = changelog.openetl;
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-16">
+    <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-16 outline-none">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold tracking-tight">Changelog</h1>
         <p className="text-fd-muted-foreground">

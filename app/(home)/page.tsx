@@ -7,15 +7,16 @@ import { source } from '@/lib/source';
 import { readSources } from '@/lib/sources';
 
 export default function HomePage() {
-  const { defaultVersion } = readSources();
+  const { defaultVersion, versions } = readSources();
   const base = `${docsRoute}/${defaultVersion}`;
   const index = source.getPage([defaultVersion]);
   const overview = source.getPage([defaultVersion, 'get-started', 'overview']);
   const quickstart = source.getPage([defaultVersion, 'get-started', 'quickstart']);
   const cards = [...sections(source.getPageTree(), defaultVersion), connectorsSection];
+  const version = versions.find((v) => v.slug === defaultVersion);
 
   return (
-    <main className="mx-auto flex w-full max-w-(--fd-layout-width) flex-1 flex-col gap-12 px-4 py-16 md:px-8">
+    <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-(--fd-layout-width) flex-1 flex-col gap-12 px-4 py-16 outline-none md:px-8">
       <section className="flex flex-col gap-4">
         <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">OpenETL documentation</h1>
         <p className="text-fd-muted-foreground max-w-2xl text-lg">
@@ -39,6 +40,12 @@ export default function HomePage() {
             </Link>
           )}
         </div>
+        <p className="text-fd-muted-foreground text-sm">
+          Documentation version:{' '}
+          <Link href={base} className="text-fd-foreground underline underline-offset-4">
+            {version?.release ?? version?.title ?? defaultVersion}
+          </Link>
+        </p>
       </section>
       <section className="flex flex-col gap-4">
         <h2 className="text-xl font-semibold">Find your way</h2>
