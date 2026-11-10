@@ -1,7 +1,6 @@
 import { Card, Cards } from 'fumadocs-ui/components/card';
 import { buttonVariants } from 'fumadocs-ui/components/ui/button';
 import Link from 'next/link';
-import { HomeSearch } from '@/components/home-search';
 import { connectorsSection, sections } from '@/lib/layout.shared';
 import { docsRoute } from '@/lib/shared';
 import { source } from '@/lib/source';
@@ -47,7 +46,6 @@ export default function HomePage() {
             {version?.release ?? version?.title ?? defaultVersion}
           </Link>
         </p>
-        <HomeSearch />
       </section>
       <section className="flex flex-col gap-4">
         <h2 className="text-xl font-semibold">Find your way</h2>
