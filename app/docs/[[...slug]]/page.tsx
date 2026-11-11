@@ -52,7 +52,8 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
 
   const MDX = page.data.body;
   const version = versionOf(page);
-  // The page in openetl: docs/ at the version's ref, and at main to edit.
+  // The page in openetl: docs/ at the tag or commit it was fetched from, and on
+  // the branch its fixes go to, to edit: the release line's, or main.
   const inRepo = `docs/${page.path.split('/').slice(1).join('/')}`;
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
@@ -60,7 +61,7 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
       <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
       <div className="flex flex-row items-center gap-2 border-b pb-6">
         <MarkdownCopyButton markdownUrl={`${markdownRoute}${page.url}.md`} />
-        <EditOnGitHub href={githubURL(repos.openetl, 'blob', 'main', inRepo)} />
+        <EditOnGitHub href={githubURL(repos.openetl, 'blob', version?.branch ?? 'main', inRepo)} />
         {version?.release && (
           <a
             className="text-fd-muted-foreground hover:text-fd-accent-foreground text-sm"

@@ -4,12 +4,18 @@ import path from 'node:path';
 // What scripts/fetch.mjs placed, from generated/sources.json.
 
 export interface Version {
+  // The release line's, such as v0-1, or next.
   slug: string;
+  // What the version picker shows: the release, such as v0.1.0-alpha, or next.
   title: string;
-  // The branch or tag the version was fetched from.
+  // The tag or commit the version's pages were fetched from, which links to
+  // GitHub point at.
   ref: string;
-  // The newest tag of the release line; undefined for next.
+  // The newest published release of the line; undefined for next.
   release?: string;
+  // The branch fixes to the version's pages go to: main for next, and the
+  // line's release-X.Y when the pages were fetched from it.
+  branch?: string;
 }
 
 // A folder of content/ and where in which repository its files come from.
