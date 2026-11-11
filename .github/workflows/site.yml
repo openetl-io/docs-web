@@ -1,13 +1,18 @@
 name: site
 
 # Builds the site from openetl and openetl-connectors as they are on GitHub,
-# fails on broken links, and deploys out/ to Cloudflare Pages from main.
+# and fails on broken links. Cloudflare Pages deploys it: its GitHub app
+# builds each push, main to docs.openetl.io and other branches as previews
+# (wrangler.toml).
 #
-# Every 15 minutes it fetches them again, and builds only when what it
-# fetched, or this repository, changed since the last build on main: a cache
-# entry named after a hash of both records each one. So a change to a page, a
-# release branch or a published release reaches the site within about a
-# quarter of an hour, and the content repositories need no token to tell it.
+# A push here is all Pages sees, so every 15 minutes this fetches the content
+# repositories again and, when what it fetched, or this repository, changed
+# since the last build on main, builds it and calls the Pages project's deploy
+# hook, the URL in the secret CLOUDFLARE_DEPLOY_HOOK, for Pages to build and
+# deploy it too. A cache entry named after a hash of both records each build.
+# So a change to a page, a release branch or a published release reaches the
+# site within about a quarter of an hour, and the content repositories need no
+# token to tell it.
 on:
   pull_request:
   push:
@@ -21,24 +26,19 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # A pull request's newer run replaces its older one; on main, a deploy runs
-  # to its end, and the next run waits.
+  # A pull request's newer run replaces its older one; on main, a run goes to
+  # its end, and the next waits.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   site:
     runs-on: ubuntu-latest
-    env:
-      # Deploying needs the secret CLOUDFLARE_API_TOKEN and the variables
-      # CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_PAGES_PROJECT; without them the
-      # site is built and checked only.
-      DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && vars.CLOUDFLARE_PAGES_PROJECT != '' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm fetch-docs
@@ -63,13 +63,19 @@ jobs:
         run: pnpm typecheck
       - if: steps.built.outputs.cache-hit != 'true'
         run: pnpm build
-      - name: Deploy to Cloudflare Pages
-        if: env.DEPLOY == 'true' && steps.built.outputs.cache-hit != 'true'
+      # A push has Pages build already; the content repositories' changes need
+      # the hook.
+      - name: Have Cloudflare Pages build and deploy
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.built.outputs.cache-hit != 'true'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm dlx wrangler@4.153.0 pages deploy out --project-name="${{ vars.CLOUDFLARE_PAGES_PROJECT }}" --branch=main
-      # Recorded once the build, and the deploy when there is one, succeeded.
+          HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::warning::No CLOUDFLARE_DEPLOY_HOOK: the site gets this with Pages' next build, on a push to main"
+            exit 0
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+      # Recorded once the build, and the call to the hook, succeeded.
       - name: Record the build
         if: github.event_name != 'pull_request' && steps.built.outputs.cache-hit != 'true'
         run: echo "${{ steps.inputs.outputs.key }}" > .built
