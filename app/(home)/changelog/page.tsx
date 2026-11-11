@@ -6,6 +6,7 @@ import { repos } from '@/lib/shared';
 export const metadata: Metadata = {
   title: 'Changelog',
   description: "OpenETL's releases and their notes.",
+  alternates: { canonical: '/changelog' },
 };
 
 export default function ChangelogPage() {

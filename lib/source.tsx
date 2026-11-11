@@ -8,7 +8,7 @@ import { createOpenAPI, type OpenAPIServer } from 'fumadocs-openapi/server';
 import type { Document } from 'fumadocs-openapi';
 import { parse as parseYAML } from 'yaml';
 import { getConnector } from './connectors';
-import { connectorsRoute, docsRoute } from './shared';
+import { connectorsRoute, docsRoute, siteUrl } from './shared';
 import { readSources, siteRoot } from './sources';
 
 const sources = readSources();
@@ -162,10 +162,14 @@ export function versionOf(page: { slugs: string[] }) {
 // A page as Markdown, for llms.txt and the Markdown copy of each page. The API
 // reference has none: its pages are generated from openapi.yaml.
 async function pageMarkdown(page: DocsPage | ConnectorPage): Promise<string> {
-  const heading = `# ${page.data.title} (${page.url})\n\n`;
+  const heading = `# ${page.data.title} (${siteUrl}${page.url})\n\n`;
   if (page.type !== 'docs' && page.type !== undefined) return `${heading}${page.data.description ?? ''}\n`;
   return heading + (await page.data.getText('processed'));
 }
 
-export const docsLlms = llms(source, { renderPage: pageMarkdown });
-export const connectorsLlms = llms(connectorsSource, { renderPage: pageMarkdown });
+// llms.txt links to each page by its full URL, as readers outside the site
+// need it.
+const llmsOptions = { renderPage: pageMarkdown, renderUrl: (node: PageTree.Item) => `${siteUrl}${node.url}` };
+
+export const docsLlms = llms(source, llmsOptions);
+export const connectorsLlms = llms(connectorsSource, llmsOptions);

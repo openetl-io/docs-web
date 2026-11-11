@@ -1,10 +1,13 @@
 import { Card, Cards } from 'fumadocs-ui/components/card';
 import { buttonVariants } from 'fumadocs-ui/components/ui/button';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { connectorsSection, sections } from '@/lib/layout.shared';
 import { docsRoute } from '@/lib/shared';
 import { source } from '@/lib/source';
 import { readSources } from '@/lib/sources';
+
+export const metadata: Metadata = { alternates: { canonical: '/' } };
 
 export default function HomePage() {
   const { defaultVersion, versions } = readSources();

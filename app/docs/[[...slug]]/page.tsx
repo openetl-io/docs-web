@@ -10,7 +10,7 @@ import {
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { APIPage } from '@/components/api-page';
+import { APIReference } from '@/components/api-reference';
 import { getMDXComponents } from '@/components/mdx';
 import { markdownRoute, repos } from '@/lib/shared';
 import { source, versionOf } from '@/lib/source';
@@ -44,7 +44,7 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
         <DocsTitle>{page.data.title}</DocsTitle>
         <DocsDescription>{page.data.description}</DocsDescription>
         <DocsBody>
-          <APIPage {...page.data.getOpenAPIPageProps()} />
+          <APIReference {...page.data.getOpenAPIPageProps()} />
         </DocsBody>
       </DocsPage>
     );
@@ -92,5 +92,6 @@ export async function generateMetadata(props: PageProps<'/docs/[[...slug]]'>): P
   return {
     title: version && version.slug !== readSources().defaultVersion ? `${page.data.title} (${version.title})` : page.data.title,
     description: page.data.description,
+    alternates: { canonical: page.url },
   };
 }

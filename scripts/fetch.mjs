@@ -2,8 +2,9 @@
 // repositories into content/ (pages and meta.json files, which fumadocs-mdx
 // reads), generated/ (sources.json, release notes, OpenAPI documents,
 // connector descriptors and schemas), public/schemas/ (JSON Schemas published
-// per version), public/logos/ and public/_redirects. All are generated and not
-// committed. Pages are copied as they are.
+// per version, and at the address each names as its $id), public/logos/ and
+// public/_redirects. All are generated and not committed. Pages are copied as
+// they are.
 //
 //   node scripts/fetch.mjs            openetl at main and its release tags, and
 //                                     each connector package at its newest tag
@@ -50,7 +51,13 @@ const OPENETL_SCHEMAS = {
   'connector.schema.json': 'internal/spec/connector.schema.json',
   'openetl-connector.schema.json': 'internal/connectorpkg/openetl-connector.schema.json',
   'manifest.schema.json': 'internal/declarative/manifest.schema.json',
+  'event.schema.json': 'internal/events/event.schema.json',
 };
+// Each schema's $id is https://openetl.io/schemas/PATH, which openetl.io
+// redirects to /schemas/PATH here.
+const SCHEMA_ID = /^https:\/\/openetl\.io\/schemas\/([a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*\.json)$/;
+// A version's own folder of schemas, which an $id's path mustn't land in.
+const VERSION_SLUG = /^(next|v\d+-\d+)(\/|$)/;
 // Files in openetl's docs/ that are notes for its authors, not pages.
 const NOT_PAGES = new Set(['AGENTS.md', 'CLAUDE.md']);
 const CONNECTOR_FILES = ['openetl-connector.yaml', 'source.schema.json', 'destination.schema.json'];
@@ -84,9 +91,17 @@ function compareVersions(a, b) {
   return 0;
 }
 
+// Each tag of repo, with the commit it points at.
 function remoteTags(repo) {
-  const out = git(root, 'ls-remote', '--tags', '--refs', remoteURL(repo));
-  return out.split('\n').filter(Boolean).map((line) => line.split('\trefs/tags/')[1]);
+  const tags = new Map();
+  for (const line of git(root, 'ls-remote', '--tags', remoteURL(repo)).split('\n').filter(Boolean)) {
+    const [sha, ref] = line.split('\t');
+    const peeled = ref.endsWith('^{}');
+    const tag = ref.slice('refs/tags/'.length).replace(/\^\{\}$/, '');
+    // An annotated tag is listed twice: as itself, and peeled, as its commit.
+    if (peeled || !tags.has(tag)) tags.set(tag, sha);
+  }
+  return tags;
 }
 
 // A shallow, sparse, blobless clone of repo at ref with only paths checked out.
@@ -126,7 +141,12 @@ function mirror(src, dest, keep = () => true, rename = (rel) => rel) {
     }
   };
   if (fs.existsSync(src)) walk(src);
+  sync(dest, want);
+}
 
+// Makes dest hold exactly the files of want, a map from a path relative to
+// dest to the file to copy there, copying only what changed.
+function sync(dest, want) {
   if (fs.existsSync(dest)) {
     for (const rel of fs.readdirSync(dest, { recursive: true })) {
       const abs = path.join(dest, rel);
@@ -167,16 +187,80 @@ function copyFile(from, to) {
   return true;
 }
 
-// openetl's docs/ at one version, and the files published with it.
-function placeVersion(version, tree, source) {
+// openetl's docs/ at one version, and the files published with it. Adds the
+// version's JSON Schemas to schemas, a map from a path under public/schemas/
+// to the file: in the version's folder, and at the path of the schema's $id,
+// unless an earlier version (a newer release; next comes last) has it.
+function placeVersion(version, tree, source, schemas) {
   mirror(path.join(tree.dir, OPENETL_DOCS), path.join(contentDir, 'docs', version.slug), (rel) => !NOT_PAGES.has(rel));
   if (!copyFile(path.join(tree.dir, OPENETL_OPENAPI), path.join(generatedDir, 'openapi', `${version.slug}.yaml`))) {
     console.warn(`openetl ${version.ref}: no ${OPENETL_OPENAPI}`);
   }
   for (const [name, from] of Object.entries(OPENETL_SCHEMAS)) {
-    copyFile(path.join(tree.dir, from), path.join(schemasDir, version.slug, name));
+    const file = path.join(tree.dir, from);
+    if (!fs.existsSync(file)) continue;
+    schemas.set(path.join(version.slug, name), file);
+    let id;
+    try {
+      id = JSON.parse(fs.readFileSync(file, 'utf8')).$id;
+    } catch (err) {
+      console.warn(`openetl ${version.ref}: ${from}: ${err.message}`);
+      continue;
+    }
+    const idPath = SCHEMA_ID.exec(id ?? '')?.[1];
+    if (!idPath || idPath.split('/').includes('..') || VERSION_SLUG.test(idPath)) {
+      console.warn(`openetl ${version.ref}: ${from}: $id ${id} isn't https://openetl.io/schemas/PATH.json, so it's published in ${version.slug}/ only`);
+      continue;
+    }
+    const at = path.join(...idPath.split('/'));
+    if (!schemas.has(at)) schemas.set(at, file);
   }
   return { dir: `content/docs/${version.slug}`, repo: OPENETL, ref: source.ref, root: OPENETL_DOCS, files: tree.files };
+}
+
+// A logo that is a file beside openetl-connector.yaml, such as ./logo.svg,
+// rather than an https URL.
+const LOGO_FILE = /^[^:/][^:]*\.(svg|png)$/;
+const MAX_LOGO = 1 << 20;
+
+function readDescriptor(pkg) {
+  const file = path.join(generatedDir, 'connectors', pkg, 'openetl-connector.yaml');
+  return fs.existsSync(file) ? parseYAML(fs.readFileSync(file, 'utf8')) : undefined;
+}
+
+// Saves a package's logo as public/logos/PKG.EXT, replacing one of another
+// type, and records where it came from in generated/connectors/PKG/logo.json.
+function saveLogo(pkg, source, ext, data) {
+  const to = path.join(logosDir, `${pkg}.${ext}`);
+  fs.mkdirSync(logosDir, { recursive: true });
+  for (const f of fs.readdirSync(logosDir)) {
+    if (f.startsWith(`${pkg}.`) && f !== `${pkg}.${ext}`) fs.rmSync(path.join(logosDir, f));
+  }
+  if (!fs.existsSync(to) || !data.equals(fs.readFileSync(to))) fs.writeFileSync(to, data);
+  writeJSON(path.join(generatedDir, 'connectors', pkg, 'logo.json'), { url: source, file: `/logos/${pkg}.${ext}` });
+}
+
+function removeLogo(pkg) {
+  fs.rmSync(path.join(generatedDir, 'connectors', pkg, 'logo.json'), { force: true });
+  if (!fs.existsSync(logosDir)) return;
+  for (const f of fs.readdirSync(logosDir)) if (f.startsWith(`${pkg}.`)) fs.rmSync(path.join(logosDir, f));
+}
+
+// A package's logo when it's a file in the package: copied from the checkout,
+// which fetchLogos, for an https URL, can't.
+function placeLogoFile(pkg, packageDir) {
+  const logo = readDescriptor(pkg)?.logo;
+  if (typeof logo !== 'string' || !LOGO_FILE.test(logo)) return;
+  const from = path.resolve(packageDir, logo);
+  try {
+    if (!from.startsWith(`${packageDir}${path.sep}`)) throw new Error('not in the package');
+    const data = fs.readFileSync(from);
+    if (data.length > MAX_LOGO) throw new Error(`${data.length} bytes, over 1 MiB`);
+    saveLogo(pkg, logo, path.extname(from).slice(1), data);
+  } catch (err) {
+    console.warn(`${pkg}: logo ${logo}: ${err.code === 'ENOENT' ? 'no such file' : err.message}`);
+    removeLogo(pkg);
+  }
 }
 
 // A connector package: its README.md is its page (index.md here, so the
@@ -189,6 +273,7 @@ function placeConnector(pkg, tree, ref) {
     const to = path.join(generatedDir, 'connectors', pkg, name);
     if (!copyFile(path.join(tree.dir, pkg, name), to)) fs.rmSync(to, { force: true });
   }
+  placeLogoFile(pkg, path.join(tree.dir, pkg));
   return {
     dir: `content/connectors/${pkg}`,
     repo: CONNECTORS,
@@ -209,10 +294,7 @@ function connectorPackages(files) {
 function writeIndexes(versions, packages) {
   // The site's own meta.json files: the versions, newest release first, and
   // the connector packages by title.
-  const title = (pkg) => {
-    const descriptor = path.join(generatedDir, 'connectors', pkg, 'openetl-connector.yaml');
-    return (fs.existsSync(descriptor) && parseYAML(fs.readFileSync(descriptor, 'utf8'))?.title) || pkg;
-  };
+  const title = (pkg) => readDescriptor(pkg)?.title || pkg;
   const byTitle = [...packages].sort((a, b) => title(a).localeCompare(title(b)));
   writeJSON(path.join(contentDir, 'docs', 'meta.json'), { pages: versions.map((v) => v.slug) });
   writeJSON(path.join(contentDir, 'connectors', 'meta.json'), { title: 'Connectors', pages: byTitle });
@@ -220,10 +302,11 @@ function writeIndexes(versions, packages) {
 
 function fetchRemote() {
   const trees = [];
+  const schemas = new Map();
 
   // openetl: main as next, and each release line at its newest tag.
   const lines = new Map();
-  for (const tag of remoteTags(OPENETL)) {
+  for (const tag of remoteTags(OPENETL).keys()) {
     const v = parseVersion(tag);
     if (!v) continue;
     const line = `${v.major}.${v.minor}`;
@@ -246,35 +329,38 @@ function fetchRemote() {
     }
     console.log(`openetl ${version.ref} → ${version.slug}`);
     versions.push(version);
-    trees.push(placeVersion(version, tree, { ref: version.ref === 'main' ? tree.commit : version.ref }));
+    trees.push(placeVersion(version, tree, { ref: version.ref === 'main' ? tree.commit : version.ref }, schemas));
   }
 
   // openetl-connectors: each package at its newest tag, or main.
   const newest = new Map();
-  for (const tag of remoteTags(CONNECTORS)) {
+  for (const [tag, commit] of remoteTags(CONNECTORS)) {
     const [pkg, rest] = tag.split('/');
     const v = rest && parseVersion(rest);
     if (!v) continue;
-    if (!newest.has(pkg) || compareVersions(v, newest.get(pkg)) > 0) newest.set(pkg, { ...v, tag });
+    if (!newest.has(pkg) || compareVersions(v, newest.get(pkg)) > 0) newest.set(pkg, { ...v, tag, commit });
   }
   const main = checkout(CONNECTORS, 'main', ['*/openetl-connector.yaml']);
   const packages = connectorPackages(main.files);
-  const byRef = new Map();
+  // One checkout per commit: packages released together share one.
+  const byCommit = new Map();
   for (const pkg of packages) {
-    const ref = newest.get(pkg)?.tag ?? 'main';
-    byRef.set(ref, [...(byRef.get(ref) ?? []), pkg]);
+    const { tag = 'main', commit = 'main' } = newest.get(pkg) ?? {};
+    const group = byCommit.get(commit) ?? { checkout: tag, pkgs: [] };
+    group.pkgs.push({ pkg, ref: tag });
+    byCommit.set(commit, group);
   }
   const connectorRefs = {};
-  for (const [ref, pkgs] of byRef) {
-    console.log(`openetl-connectors ${ref} → ${pkgs.join(', ')}`);
-    const tree = checkout(CONNECTORS, ref, pkgs.map((p) => `${p}/`));
-    for (const pkg of pkgs) {
+  for (const group of byCommit.values()) {
+    console.log(`openetl-connectors ${group.pkgs.map(({ pkg, ref }) => (ref === 'main' ? `${pkg} at main` : ref)).join(', ')}`);
+    const tree = checkout(CONNECTORS, group.checkout, group.pkgs.map(({ pkg }) => `${pkg}/`));
+    for (const { pkg, ref } of group.pkgs) {
       trees.push(placeConnector(pkg, tree, ref === 'main' ? tree.commit : ref));
       connectorRefs[pkg] = ref;
     }
   }
 
-  return { versions, packages, trees, connectorRefs };
+  return { versions, packages, trees, connectorRefs, schemas };
 }
 
 function fetchLocal() {
@@ -283,7 +369,8 @@ function fetchLocal() {
   const version = { slug: 'next', ref: 'main', title: 'next', release: undefined };
 
   const openetl = workingTree(openetlDir);
-  const trees = [placeVersion(version, openetl, { ref: 'main' })];
+  const schemas = new Map();
+  const trees = [placeVersion(version, openetl, { ref: 'main' }, schemas)];
   const connectors = workingTree(connectorsDir);
   const packages = connectorPackages(connectors.files);
   const connectorRefs = {};
@@ -291,7 +378,7 @@ function fetchLocal() {
     trees.push(placeConnector(pkg, connectors, 'main'));
     connectorRefs[pkg] = 'main';
   }
-  return { versions: [version], packages, trees, connectorRefs, dirs: [openetlDir, connectorsDir] };
+  return { versions: [version], packages, trees, connectorRefs, schemas, dirs: [openetlDir, connectorsDir] };
 }
 
 // GitHub Releases: openetl's, and each connector package's from its tags.
@@ -333,14 +420,16 @@ const logoTypes = { 'image/svg+xml': 'svg', 'image/png': 'png', 'image/jpeg': 'j
 
 // Each package's logo, from the URL in its openetl-connector.yaml, served by
 // the site so readers' browsers don't fetch it from a third party.
+// A logo that's a file in the package is copied with the package, by
+// placeLogoFile.
 async function fetchLogos(packages) {
   fs.mkdirSync(logosDir, { recursive: true });
   for (const pkg of packages) {
     const info = path.join(generatedDir, 'connectors', pkg, 'logo.json');
-    const descriptor = path.join(generatedDir, 'connectors', pkg, 'openetl-connector.yaml');
-    const url = fs.existsSync(descriptor) ? parseYAML(fs.readFileSync(descriptor, 'utf8'))?.logo : undefined;
+    const url = readDescriptor(pkg)?.logo;
+    if (typeof url === 'string' && LOGO_FILE.test(url)) continue;
     if (!url) {
-      fs.rmSync(info, { force: true });
+      removeLogo(pkg);
       continue;
     }
     const known = fs.existsSync(info) ? JSON.parse(fs.readFileSync(info, 'utf8')) : undefined;
@@ -351,10 +440,8 @@ async function fetchLogos(packages) {
       const ext = logoTypes[type];
       if (!res.ok || !ext) throw new Error(`${res.status} ${type ?? 'no content type'}`);
       const data = Buffer.from(await res.arrayBuffer());
-      if (data.length > 1 << 20) throw new Error(`${data.length} bytes, over 1 MiB`);
-      for (const f of fs.readdirSync(logosDir)) if (f.startsWith(`${pkg}.`)) fs.rmSync(path.join(logosDir, f));
-      fs.writeFileSync(path.join(logosDir, `${pkg}.${ext}`), data);
-      writeJSON(info, { url, file: `/logos/${pkg}.${ext}` });
+      if (data.length > MAX_LOGO) throw new Error(`${data.length} bytes, over 1 MiB`);
+      saveLogo(pkg, url, ext, data);
     } catch (err) {
       console.warn(`${pkg}: logo ${url}: ${err.message}`);
     }
@@ -363,14 +450,20 @@ async function fetchLogos(packages) {
 
 function run() {
   const result = local ? fetchLocal() : fetchRemote();
-  const { versions, packages, trees, connectorRefs } = result;
+  const { versions, packages, trees, connectorRefs, schemas } = result;
+  sync(schemasDir, schemas);
 
   // Remove what an earlier run placed that this one didn't.
   const keepVersions = new Set(versions.map((v) => v.slug));
-  for (const dir of [path.join(contentDir, 'docs'), schemasDir]) {
-    if (!fs.existsSync(dir)) continue;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory() && !keepVersions.has(entry.name)) fs.rmSync(path.join(dir, entry.name), { recursive: true });
+  const docsDir = path.join(contentDir, 'docs');
+  if (fs.existsSync(docsDir)) {
+    for (const entry of fs.readdirSync(docsDir, { withFileTypes: true })) {
+      if (entry.isDirectory() && !keepVersions.has(entry.name)) fs.rmSync(path.join(docsDir, entry.name), { recursive: true });
+    }
+  }
+  if (fs.existsSync(logosDir)) {
+    for (const f of fs.readdirSync(logosDir)) {
+      if (!packages.includes(f.replace(/\.[^.]*$/, ''))) fs.rmSync(path.join(logosDir, f));
     }
   }
   const openapiDir = path.join(generatedDir, 'openapi');
