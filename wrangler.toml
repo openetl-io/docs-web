@@ -1,0 +1,16 @@
+# Cloudflare Pages' settings for the site, which Pages builds from this
+# repository with Cloudflare's GitHub app: on a push to main, which it
+# deploys to docs.openetl.io, on a push to any other branch, as a preview,
+# and when site.yml calls the project's deploy hook because what the site
+# reads from openetl or openetl-connectors changed. AGENTS.md has the rest.
+#
+# Pages takes these from here, and shows them read-only in its dashboard. The
+# dashboard holds what this file can't: the framework preset (None: the site
+# is a static export, not a Next.js app on Pages), the build command
+# (`pnpm fetch-docs && pnpm build`), and the secret GITHUB_TOKEN. The Node.js
+# version is in .node-version.
+
+name = "docs-web"
+pages_build_output_dir = "out"
+# Pages requires one, though the site has no Functions for it to apply to.
+compatibility_date = "2026-11-01"
