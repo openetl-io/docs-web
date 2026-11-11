@@ -149,8 +149,10 @@ export function generateStaticParams() {
 
 export async function generateMetadata(props: PageProps<'/connectors/[[...slug]]'>): Promise<Metadata> {
   const { slug } = await props.params;
-  if (!slug || slug.length === 0) return { title: 'Connectors', description: 'The official connectors for OpenETL.' };
+  if (!slug || slug.length === 0) {
+    return { title: 'Connectors', description: 'The official connectors for OpenETL.', alternates: { canonical: connectorsRoute } };
+  }
   const page = connectorsSource.getPage(slug);
   if (!page) return {};
-  return { title: page.data.title, description: page.data.description };
+  return { title: page.data.title, description: page.data.description, alternates: { canonical: page.url } };
 }

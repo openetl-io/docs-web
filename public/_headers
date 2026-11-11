@@ -1,0 +1,9 @@
+# Cloudflare Pages' headers for the files of out/.
+
+# Next.js's build output, named by its content: a new build has new names.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The JSON Schemas, which editors and validators on other sites fetch.
+/schemas/*
+  Access-Control-Allow-Origin: *

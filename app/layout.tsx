@@ -3,9 +3,11 @@ import '@fontsource-variable/geist-mono';
 import './global.css';
 import type { Metadata } from 'next';
 import { Provider } from '@/components/provider';
+import { siteUrl } from '@/lib/shared';
 import { readSources } from '@/lib/sources';
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: { template: '%s · OpenETL', default: 'OpenETL documentation' },
   description: 'Guides and reference for using, running, integrating and extending OpenETL.',
   icons: { icon: '/logo.svg' },
