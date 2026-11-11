@@ -158,13 +158,19 @@ function remoteBranches(repo, pattern) {
   return branches;
 }
 
-// Whether commit is in branch's history, from a clone of its commits alone.
+// Whether commit is in branch's history, from a clone of its commits alone,
+// made once per branch.
+const histories = new Map();
 function branchHas(repo, branch, commit) {
-  const dir = path.join(cacheDir, `${repo.replace('/', '__')}@${branch.replaceAll('/', '__')}.history`);
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.mkdirSync(path.dirname(dir), { recursive: true });
-  execFileSync('git', ['clone', '--quiet', '--bare', '--filter=tree:0', '--single-branch', `--branch=${branch}`, remoteURL(repo), dir], { stdio: 'inherit' });
-  return git(dir, 'rev-list', 'HEAD').split('\n').includes(commit);
+  const key = `${repo}@${branch}`;
+  if (!histories.has(key)) {
+    const dir = path.join(cacheDir, `${repo.replace('/', '__')}@${branch.replaceAll('/', '__')}.history`);
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(dir), { recursive: true });
+    execFileSync('git', ['clone', '--quiet', '--bare', '--filter=tree:0', '--single-branch', `--branch=${branch}`, remoteURL(repo), dir], { stdio: 'inherit' });
+    histories.set(key, new Set(git(dir, 'rev-list', 'HEAD').split('\n')));
+  }
+  return histories.get(key).has(commit);
 }
 
 // A shallow, sparse, blobless clone of repo at ref with only paths checked out.
@@ -411,7 +417,11 @@ function fetchRemote(published) {
     trees.push(placeVersion(version, tree, schemas));
   }
 
-  // openetl-connectors: each package at its newest release, or main.
+  // openetl-connectors: each package at its newest release, from the release
+  // line's branch, release-X.Y, when the branch has that release, as openetl's
+  // versions are, otherwise from the release's tag; or at main until it has
+  // a release. The packages are released together, so the branch holds them
+  // all.
   const newest = new Map();
   const packageVersion = (tag) => {
     const [pkg, rest, ...more] = tag.split('/');
@@ -423,21 +433,37 @@ function fetchRemote(published) {
   }
   const main = checkout(CONNECTORS, 'main', ['*/openetl-connector.yaml']);
   const packages = connectorPackages(main.files);
-  // One checkout per commit: packages released together share one.
-  const byCommit = new Map();
+  const connectorBranches = remoteBranches(CONNECTORS, 'release-*');
+  // One checkout per branch or commit: packages released together share one.
+  const groups = new Map();
+  const stale = new Map();
   for (const pkg of packages) {
-    const { tag = 'main', commit = 'main' } = newest.get(pkg) ?? {};
-    const group = byCommit.get(commit) ?? { checkout: tag, pkgs: [] };
-    group.pkgs.push({ pkg, ref: tag });
-    byCommit.set(commit, group);
+    const v = newest.get(pkg);
+    // Links to GitHub point at the package's tag, or at the commit of a branch.
+    let at = { key: 'main', checkout: 'main', branch: 'main' };
+    if (v) {
+      const name = `release-${v.major}.${v.minor}`;
+      if (connectorBranches.has(name) && branchHas(CONNECTORS, name, v.commit)) at = { key: name, checkout: name, branch: name };
+      else {
+        if (connectorBranches.has(name)) stale.set(name, [...(stale.get(name) ?? []), v.tag]);
+        at = { key: v.commit, checkout: v.tag, branch: 'main', ref: v.tag };
+      }
+    }
+    const group = groups.get(at.key) ?? { checkout: at.checkout, pkgs: [] };
+    group.pkgs.push({ pkg, release: v?.tag, branch: at.branch, ref: at.ref });
+    groups.set(at.key, group);
+  }
+  for (const [name, tags] of stale) {
+    console.warn(`openetl-connectors ${name} doesn't have ${tags.join(', ')}: their pages are built from the tags`);
   }
   const connectorRefs = {};
-  for (const group of byCommit.values()) {
-    console.log(`openetl-connectors ${group.pkgs.map(({ pkg, ref }) => (ref === 'main' ? `${pkg} at main` : ref)).join(', ')}`);
+  for (const group of groups.values()) {
+    const releases = group.pkgs.map(({ pkg, release }) => release ?? `${pkg} at main`).join(', ');
+    console.log(`openetl-connectors ${group.checkout.startsWith('release-') ? `${group.checkout} (${releases})` : releases}`);
     const tree = checkout(CONNECTORS, group.checkout, group.pkgs.map(({ pkg }) => `${pkg}/`));
-    for (const { pkg, ref } of group.pkgs) {
-      trees.push(placeConnector(pkg, tree, ref === 'main' ? tree.commit : ref));
-      connectorRefs[pkg] = ref;
+    for (const { pkg, release, branch, ref = tree.commit } of group.pkgs) {
+      trees.push(placeConnector(pkg, tree, ref));
+      connectorRefs[pkg] = { release, ref, branch };
     }
   }
 
@@ -457,7 +483,7 @@ function fetchLocal() {
   const connectorRefs = {};
   for (const pkg of packages) {
     trees.push(placeConnector(pkg, connectors, 'main'));
-    connectorRefs[pkg] = 'main';
+    connectorRefs[pkg] = { ref: 'main', branch: 'main' };
   }
   return { versions: [version], packages, trees, connectorRefs, schemas, dirs: [openetlDir, connectorsDir] };
 }

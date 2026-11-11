@@ -67,7 +67,9 @@ export default async function Page(props: PageProps<'/connectors/[[...slug]]'>) 
   // The package's page is its README; the rest are under its docs/.
   const isPackagePage = slug.length === 1 && connector !== undefined;
   const inRepo = isPackagePage ? `${name}/README.md` : page.path;
-  const ref = connector?.ref ?? 'main';
+  // The package in openetl-connectors: at the tag or commit its page was
+  // fetched from, and on the branch fixes go to, to edit.
+  const source = connector?.source ?? { ref: 'main', branch: 'main' };
 
   const toc: TOCItemType[] = [...page.data.toc];
   const configs = isPackagePage
@@ -94,13 +96,13 @@ export default async function Page(props: PageProps<'/connectors/[[...slug]]'>) 
       <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
       <div className="flex flex-row flex-wrap items-center gap-2 border-b pb-6">
         <MarkdownCopyButton markdownUrl={`${markdownRoute}${page.url}.md`} />
-        <EditOnGitHub href={githubURL(repos.connectors, 'blob', 'main', inRepo)} />
+        <EditOnGitHub href={githubURL(repos.connectors, 'blob', source.branch, inRepo)} />
         {isPackagePage && (
           <a
             className="text-fd-muted-foreground hover:text-fd-accent-foreground text-sm"
-            href={githubURL(repos.connectors, 'tree', ref, name)}
+            href={githubURL(repos.connectors, 'tree', source.ref, name)}
           >
-            {ref === 'main' ? 'Unreleased, from main' : ref}
+            {source.release ?? 'Unreleased, from main'}
           </a>
         )}
       </div>

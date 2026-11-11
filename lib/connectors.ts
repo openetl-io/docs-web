@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { readSources, siteRoot } from './sources';
+import { type ConnectorSource, readSources, siteRoot } from './sources';
 
 // A connector package as openetl-connector.yaml describes it, with the
 // config schema of each of its roles.
@@ -14,8 +14,8 @@ export interface Connector {
   schemas: Partial<Record<'source' | 'destination', ConfigSchema>>;
   // A path under public/, when the fetch could download the logo.
   logo?: string;
-  // The tag or main the package's page was fetched from.
-  ref: string;
+  // Where the package's page came from.
+  source: ConnectorSource;
 }
 
 export interface ConfigSchema {
@@ -68,7 +68,7 @@ export function getConnector(name: string): Connector | undefined {
     roles,
     schemas,
     logo,
-    ref: readSources().connectors[name] ?? 'main',
+    source: readSources().connectors[name] ?? { ref: 'main', branch: 'main' },
   };
 }
 
