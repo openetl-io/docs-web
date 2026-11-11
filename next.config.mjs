@@ -4,7 +4,7 @@ const withMDX = createMDX();
 
 /** @type {import('next').NextConfig} */
 const config = {
-  // A static site: Cloudflare Pages serves out/.
+  // A static site: Cloudflare serves out/ (wrangler.toml).
   output: 'export',
   images: { unoptimized: true },
   reactStrictMode: true,
