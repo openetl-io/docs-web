@@ -83,7 +83,7 @@ function versionsPlugin(): LoaderPlugin {
         meta.data = {
           ...meta.data,
           title: v.title,
-          description: v.release ? `${v.release}${latest ? ', the newest release' : ''}` : 'From main, unreleased',
+          description: v.release ? (latest ? 'The newest release' : 'An earlier release') : 'From main, unreleased',
           icon: v.release ? 'Tag' : 'GitBranch',
           root: 'version',
         };

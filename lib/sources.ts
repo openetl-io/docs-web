@@ -4,12 +4,18 @@ import path from 'node:path';
 // What scripts/fetch.mjs placed, from generated/sources.json.
 
 export interface Version {
+  // The release line's, such as v0-1, or next.
   slug: string;
+  // What the version picker shows: the release, such as v0.1.0-alpha, or next.
   title: string;
-  // The branch or tag the version was fetched from.
+  // The tag or commit the version's pages were fetched from, which links to
+  // GitHub point at.
   ref: string;
-  // The newest tag of the release line; undefined for next.
+  // The newest published release of the line; undefined for next.
   release?: string;
+  // The branch fixes to the version's pages go to: main for next, and the
+  // line's release-X.Y when the pages were fetched from it.
+  branch?: string;
 }
 
 // A folder of content/ and where in which repository its files come from.
@@ -28,12 +34,25 @@ export interface Tree {
   files: string[];
 }
 
+// Where a connector package's page came from.
+export interface ConnectorSource {
+  // The package's newest published release, such as postgres/v0.1.0-alpha;
+  // undefined until it has one.
+  release?: string;
+  // The tag or commit the page was fetched from, which links to GitHub point
+  // at.
+  ref: string;
+  // The branch fixes to the page go to: the release line's release-X.Y when
+  // the page was fetched from it, or main.
+  branch: string;
+}
+
 export interface Sources {
   local: boolean;
   defaultVersion: string;
   versions: Version[];
-  // The ref each connector package was fetched from, by package.
-  connectors: Record<string, string>;
+  // Where each connector package's page came from, by package.
+  connectors: Record<string, ConnectorSource>;
   trees: Tree[];
 }
 

@@ -1,18 +1,19 @@
 name: site
 
 # Builds the site from openetl and openetl-connectors as they are on GitHub,
-# fails on broken links, and deploys out/ to Cloudflare Pages from main. A
-# repository_dispatch of type docs starts it, for the content repositories to
-# send when their docs change or they make a release; the nightly run picks up
-# what no dispatch announced.
+# fails on broken links, and deploys out/ to Cloudflare Pages from main.
+#
+# Every 15 minutes it fetches them again, and builds only when what it
+# fetched, or this repository, changed since the last build on main: a cache
+# entry named after a hash of both records each one. So a change to a page, a
+# release branch or a published release reaches the site within about a
+# quarter of an hour, and the content repositories need no token to tell it.
 on:
   pull_request:
   push:
     branches: [main]
-  repository_dispatch:
-    types: [docs]
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -20,7 +21,9 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A pull request's newer run replaces its older one; on main, a deploy runs
+  # to its end, and the next run waits.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   site:
@@ -41,11 +44,37 @@ jobs:
       - run: pnpm fetch-docs
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - run: pnpm typecheck
-      - run: pnpm build
+      - name: What the site is built from
+        id: inputs
+        run: |
+          files=$(ls -d content generated public/schemas public/logos public/_redirects 2>/dev/null)
+          sum=$({ echo "$GITHUB_SHA"; find $files -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum; } | sha256sum | cut -d' ' -f1)
+          echo "key=site-built-$sum" >> "$GITHUB_OUTPUT"
+      # A scheduled run stops here when that has been built already.
+      - name: Built already
+        id: built
+        if: github.event_name == 'schedule'
+        uses: actions/cache/restore@v4
+        with:
+          path: .built
+          key: ${{ steps.inputs.outputs.key }}
+          lookup-only: true
+      - if: steps.built.outputs.cache-hit != 'true'
+        run: pnpm typecheck
+      - if: steps.built.outputs.cache-hit != 'true'
+        run: pnpm build
       - name: Deploy to Cloudflare Pages
-        if: env.DEPLOY == 'true'
+        if: env.DEPLOY == 'true' && steps.built.outputs.cache-hit != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm dlx wrangler@4.153.0 pages deploy out --project-name="${{ vars.CLOUDFLARE_PAGES_PROJECT }}" --branch=main
+      # Recorded once the build, and the deploy when there is one, succeeded.
+      - name: Record the build
+        if: github.event_name != 'pull_request' && steps.built.outputs.cache-hit != 'true'
+        run: echo "${{ steps.inputs.outputs.key }}" > .built
+      - if: github.event_name != 'pull_request' && steps.built.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .built
+          key: ${{ steps.inputs.outputs.key }}
