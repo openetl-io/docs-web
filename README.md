@@ -1,6 +1,6 @@
 # docs-web
 
-The website for OpenETL's documentation. It holds the site, not the pages: those live next to the code they describe, in [openetl](https://github.com/openetl-io/openetl/tree/main/docs) (`docs/`) and in [openetl-connectors](https://github.com/openetl-io/openetl-connectors) (each package's `README.md`). The site is built from them with [Fumadocs](https://fumadocs.dev) and served by Cloudflare Pages at [docs.openetl.io](https://docs.openetl.io).
+The website for OpenETL's documentation. It holds the site, not the pages: those live next to the code they describe, in [openetl](https://github.com/openetl-io/openetl/tree/main/docs) (`docs/`) and in [openetl-connectors](https://github.com/openetl-io/openetl-connectors) (each package's `README.md`). The site is built from them with [Fumadocs](https://fumadocs.dev) and served by Cloudflare at [docs.openetl.io](https://docs.openetl.io).
 
 To change what a page says, change it in its own repository. [AGENTS.md](AGENTS.md) has how the site is put together.
 
@@ -27,7 +27,7 @@ pnpm fetch-docs
 pnpm dev
 ```
 
-To build the static site that Cloudflare Pages serves, check its links, and serve it on [localhost:3000](http://localhost:3000):
+To build the static site that Cloudflare serves, check its links, and serve it on [localhost:3000](http://localhost:3000):
 
 ```sh
 pnpm fetch-docs

@@ -1,24 +1,15 @@
 name: site
 
-# Builds the site from openetl and openetl-connectors as they are on GitHub,
-# and fails on broken links. Cloudflare Pages deploys it: its GitHub app
-# builds each push, main to docs.openetl.io and other branches as previews
-# (wrangler.toml).
-#
-# A push here is all Pages sees, so every 15 minutes this fetches the content
-# repositories again and, when what it fetched, or this repository, changed
-# since the last build on main, builds it and calls the Pages project's deploy
-# hook, the URL in the secret CLOUDFLARE_DEPLOY_HOOK, for Pages to build and
-# deploy it too. A cache entry named after a hash of both records each build.
-# So a change to a page, a release branch or a published release reaches the
-# site within about a quarter of an hour, and the content repositories need no
-# token to tell it.
+# Builds the site and checks its links. Cloudflare deploys it from each push
+# (wrangler.toml). Every 30 minutes this fetches openetl and
+# openetl-connectors again and, when that or this repository changed since
+# the last build, calls the deploy hook in CLOUDFLARE_DEPLOY_HOOK.
 on:
   pull_request:
   push:
     branches: [main]
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -63,15 +54,14 @@ jobs:
         run: pnpm typecheck
       - if: steps.built.outputs.cache-hit != 'true'
         run: pnpm build
-      # A push has Pages build already; the content repositories' changes need
-      # the hook.
-      - name: Have Cloudflare Pages build and deploy
+      # Cloudflare builds a push itself.
+      - name: Have Cloudflare build and deploy
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.built.outputs.cache-hit != 'true'
         env:
           HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
         run: |
           if [ -z "$HOOK" ]; then
-            echo "::warning::No CLOUDFLARE_DEPLOY_HOOK: the site gets this with Pages' next build, on a push to main"
+            echo "::warning::No CLOUDFLARE_DEPLOY_HOOK: the site gets this with the next push to main"
             exit 0
           fi
           curl -fsS -X POST "$HOOK" > /dev/null

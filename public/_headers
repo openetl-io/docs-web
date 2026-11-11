@@ -1,4 +1,4 @@
-# Cloudflare Pages' headers for the files of out/.
+# Cloudflare's headers for the files of out/.
 
 # Next.js's build output, named by its content: a new build has new names.
 /_next/static/*

@@ -1,6 +1,6 @@
 # Working on docs-web
 
-For people and coding agents. This repository builds OpenETL's documentation site with Fumadocs, as a static site that Cloudflare Pages serves at [docs.openetl.io](https://docs.openetl.io). It owns the site's layout, theme, components, home page and build. It owns no documentation: every page comes from the repository whose code it describes, so the pages change in the same pull requests as the code.
+For people and coding agents. This repository builds OpenETL's documentation site with Fumadocs, as a static site that Cloudflare serves at [docs.openetl.io](https://docs.openetl.io). It owns the site's layout, theme, components, home page and build. It owns no documentation: every page comes from the repository whose code it describes, so the pages change in the same pull requests as the code.
 
 ## Where the pages come from
 
@@ -28,16 +28,14 @@ The format the pages follow is [openetl's docs/AGENTS.md](https://github.com/ope
 
 ## Hosting
 
-The site's address, `https://docs.openetl.io`, is `siteUrl` in `lib/shared.ts`. Each page names its URL there as canonical, so a preview deployment points search engines at the site, and `sitemap.xml` and `llms.txt` use full URLs. `public/_headers`, committed, has Cloudflare Pages cache Next.js's build output, whose names change with its content, for a year, and lets other sites fetch the schemas. `public/_redirects`, generated, redirects `/docs` to the default version.
+The site's address, `https://docs.openetl.io`, is `siteUrl` in `lib/shared.ts`. Each page names its URL there as canonical, so a preview deployment points search engines at the site, and `sitemap.xml` and `llms.txt` use full URLs. `public/_headers`, committed, has Cloudflare cache Next.js's build output, whose names change with its content, for a year, and lets other sites fetch the schemas. `public/_redirects`, generated, redirects `/docs` to the default version.
 
-Cloudflare Pages builds and deploys the site itself, with Cloudflare's GitHub app: a push to `main` to `docs.openetl.io`, a push to another branch as a preview. `wrangler.toml` holds the project's name, its output folder, `out`, and the compatibility date Pages requires; Pages shows them read-only in its dashboard. The dashboard holds the rest:
+Cloudflare builds and deploys the site from its GitHub app, as the Worker `openetl-docs`, which serves `out/` as static assets: a push to `main` to `docs.openetl.io`, a push to another branch as a preview. `wrangler.toml` has the build command, `pnpm fetch-docs && pnpm build`, which checks the links too, so a broken link fails the deploy and the site stays as it was. Pages are served without a trailing slash, as their canonical URLs have none, and a path with no file gets `404.html`. The Node.js version is in `.node-version`.
 
-- the framework preset, None: the site is a static export, not a Next.js app on Pages;
-- the build command, `pnpm fetch-docs && pnpm build`, which checks the links too, so a broken link fails the deploy and the site stays as it was;
-- the secret `GITHUB_TOKEN`, a fine-grained token with read-only access to public repositories and no permissions, for the published releases and their notes. Without it the build shares GitHub's unauthenticated limit with whatever else runs from the same address, and when that runs out every tag counts as released and the changelog is empty;
+Cloudflare's dashboard holds the rest:
+
+- the build secret `GITHUB_TOKEN`, a fine-grained token with read-only access to public repositories, for the published releases and their notes. Without it the build shares GitHub's unauthenticated limit with whatever else builds from the same address, and when that runs out every tag counts as released and the changelog is empty;
 - the custom domain, `docs.openetl.io`, and the deploy hook that `site.yml` calls, for branch `main`.
-
-The Node.js version is in `.node-version`, which Pages and the workflow read. Pages installs dependencies with pnpm itself.
 
 ## Schemas
 
@@ -65,11 +63,9 @@ Release notes are GitHub Releases, written when a release is made. The fetch rea
 
 `.github/workflows/site.yml` fetches, type-checks, builds and checks the links:
 
-- on each pull request, and on a push to `main`, which Pages builds and deploys as well;
-- every 15 minutes on `main`, where it builds only when what it fetched, or this repository, changed since the last build: a cache entry named after a hash of both records each build. Then it calls the Pages project's deploy hook, the URL in the secret `CLOUDFLARE_DEPLOY_HOOK`, and Pages builds and deploys `main` again. So a change to a page, a release branch or a published release reaches the site within about a quarter of an hour, and the content repositories need no token to tell it. Without the secret, the change waits for the next push to `main`;
+- on each pull request, and on a push to `main`, which Cloudflare builds and deploys as well;
+- every 30 minutes on `main`, where it builds only when what it fetched, or this repository, changed since the last build: a cache entry named after a hash of both records each build. Then it calls the Worker's deploy hook, the URL in the secret `CLOUDFLARE_DEPLOY_HOOK`, and Cloudflare builds and deploys `main` again. So a change to a page, a release branch or a published release reaches the site within about half an hour, and the content repositories need no token to tell it. Without the secret, the change waits for the next push to `main`;
 - when run by hand (`gh workflow run site.yml`), which always builds and calls the hook.
-
-Pages' free plan allows 500 builds a month: one per push, preview pushes included, and one per change the poll finds.
 
 ## Working on it
 
