@@ -1,7 +1,7 @@
 name: site
 
 # Builds the site and checks its links. Cloudflare deploys it from each push
-# (wrangler.toml). Every 15 minutes this fetches openetl and
+# (wrangler.toml). Every 30 minutes this fetches openetl and
 # openetl-connectors again and, when that or this repository changed since
 # the last build, calls the deploy hook in CLOUDFLARE_DEPLOY_HOOK.
 on:
@@ -9,7 +9,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 permissions:

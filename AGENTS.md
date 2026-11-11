@@ -64,7 +64,7 @@ Release notes are GitHub Releases, written when a release is made. The fetch rea
 `.github/workflows/site.yml` fetches, type-checks, builds and checks the links:
 
 - on each pull request, and on a push to `main`, which Cloudflare builds and deploys as well;
-- every 15 minutes on `main`, where it builds only when what it fetched, or this repository, changed since the last build: a cache entry named after a hash of both records each build. Then it calls the Worker's deploy hook, the URL in the secret `CLOUDFLARE_DEPLOY_HOOK`, and Cloudflare builds and deploys `main` again. So a change to a page, a release branch or a published release reaches the site within about a quarter of an hour, and the content repositories need no token to tell it. Without the secret, the change waits for the next push to `main`;
+- every 30 minutes on `main`, where it builds only when what it fetched, or this repository, changed since the last build: a cache entry named after a hash of both records each build. Then it calls the Worker's deploy hook, the URL in the secret `CLOUDFLARE_DEPLOY_HOOK`, and Cloudflare builds and deploys `main` again. So a change to a page, a release branch or a published release reaches the site within about half an hour, and the content repositories need no token to tell it. Without the secret, the change waits for the next push to `main`;
 - when run by hand (`gh workflow run site.yml`), which always builds and calls the hook.
 
 ## Working on it
