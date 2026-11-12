@@ -1,6 +1,6 @@
 # docs-web
 
-The website for OpenETL's documentation. It holds the site, not the pages: those live next to the code they describe, in [openetl](https://github.com/openetl-io/openetl/tree/main/docs) (`docs/`) and in [openetl-connectors](https://github.com/openetl-io/openetl-connectors) (each package's `README.md`). The site is built from them with [Fumadocs](https://fumadocs.dev) and served by Cloudflare at [docs.openetl.io](https://docs.openetl.io).
+The website for OpenETL's documentation. It holds the site, not the pages: those live next to the code they describe, in [openetl](https://github.com/openetl-io/openetl/tree/main/docs) (`docs/`) and in [openetl-connectors](https://github.com/openetl-io/openetl-connectors) (each package's `README.md`, always from `main`). The site is built from them with [Fumadocs](https://fumadocs.dev) and served by Cloudflare at [docs.openetl.io](https://docs.openetl.io).
 
 To change what a page says, change it in its own repository. [AGENTS.md](AGENTS.md) has how the site is put together.
 
@@ -20,7 +20,7 @@ pnpm dev:local
 
 The site is at [localhost:3000](http://localhost:3000). It reads the working trees of `../openetl` and `../openetl-connectors`, uncommitted changes included, and shows each change when you save it. `OPENETL_DIR` and `CONNECTORS_DIR` point it at checkouts somewhere else. Where a page writes `{{version}}`, the site shows OpenETL's newest release, which it reads from GitHub; offline, it shows `{{version}}`.
 
-To see the docs as they are on GitHub, at `main` and at the newest stable release, fetch them first:
+To see the docs as they are on GitHub, openetl's at `main` and at its newest stable release and the connectors' at `main`, fetch them first:
 
 ```sh
 pnpm fetch-docs

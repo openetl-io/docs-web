@@ -10,8 +10,8 @@
 //   node scripts/fetch.mjs            openetl at main as next and at the newest
 //                                     stable release as stable (from its line's
 //                                     branch release-X.Y, if that has it, or
-//                                     its tag), and each connector package at
-//                                     its newest release or main, from GitHub
+//                                     its tag), and openetl-connectors at main,
+//                                     from GitHub
 //   node scripts/fetch.mjs --local    the working trees of sibling checkouts
 //                                     (OPENETL_DIR, CONNECTORS_DIR; default
 //                                     ../openetl and ../openetl-connectors),
@@ -459,9 +459,9 @@ function fetchRemote(published) {
     trees.push(placeVersion(version, tree, schemas));
   }
 
-  // openetl-connectors: each package at its newest release, from its tag,
-  // such as postgres/v0.2.0, or at main until it has a release. Packages
-  // version on their own, and fixes to their pages go to main.
+  // openetl-connectors: every package's page and files from main, so a fix to
+  // them is on the site without a release. Each package's newest published
+  // release, from its tags such as postgres/v0.2.0, is named beside its page.
   const newestOfPackage = new Map();
   const packageVersion = (tag) => {
     const [pkg, rest, ...more] = tag.split('/');
@@ -473,25 +473,13 @@ function fetchRemote(published) {
   }
   const main = checkout(CONNECTORS, 'main', ['*/openetl-connector.yaml']);
   const packages = connectorPackages(main.files);
-  // One checkout per commit: packages whose releases are tags of the same
-  // commit share one, as do those at main.
-  const groups = new Map();
-  for (const pkg of packages) {
-    const v = newestOfPackage.get(pkg);
-    // Links to GitHub point at the package's tag, or at main's commit.
-    const at = v ? { key: v.commit, checkout: v.tag, ref: v.tag } : { key: 'main', checkout: 'main' };
-    const group = groups.get(at.key) ?? { checkout: at.checkout, pkgs: [] };
-    group.pkgs.push({ pkg, release: v?.tag, ref: at.ref });
-    groups.set(at.key, group);
-  }
+  git(main.dir, 'sparse-checkout', 'set', '--no-cone', ...packages.map((pkg) => `/${pkg}/`));
+  console.log(`openetl-connectors main → ${packages.map((pkg) => `${pkg} (${newestOfPackage.get(pkg)?.tag ?? 'unreleased'})`).join(', ')}`);
+  // Links to GitHub point at main's commit, which moves.
   const connectorRefs = {};
-  for (const group of groups.values()) {
-    console.log(`openetl-connectors ${group.pkgs.map(({ pkg, release }) => release ?? `${pkg} at main`).join(', ')}`);
-    const tree = checkout(CONNECTORS, group.checkout, group.pkgs.map(({ pkg }) => `${pkg}/`));
-    for (const { pkg, release, ref = tree.commit } of group.pkgs) {
-      trees.push(placeConnector(pkg, tree, ref));
-      connectorRefs[pkg] = { release, ref, branch: 'main' };
-    }
+  for (const pkg of packages) {
+    trees.push(placeConnector(pkg, main, main.commit));
+    connectorRefs[pkg] = { release: newestOfPackage.get(pkg)?.tag, ref: main.commit, branch: 'main' };
   }
 
   return { versions, packages, trees, connectorRefs, schemas };

@@ -41,12 +41,12 @@ export interface Tree {
 // Where a connector package's page came from.
 export interface ConnectorSource {
   // The package's newest published release, such as postgres/v0.1.0-alpha;
-  // undefined until it has one.
+  // undefined until it has one, and with --local. The page isn't from it.
   release?: string;
-  // The tag the page was fetched from, or main's commit until the package has
-  // a release, which links to GitHub point at.
+  // main's commit the page was fetched from, which links to GitHub point at;
+  // main with --local.
   ref: string;
-  // The branch fixes to the page go to: main.
+  // The branch the page comes from and fixes to it go to: main.
   branch: string;
 }
 
