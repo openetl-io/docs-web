@@ -53,7 +53,7 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const MDX = page.data.body;
   const version = versionOf(page);
   // The page in openetl: docs/ at the tag or commit it was fetched from, and on
-  // the branch its fixes go to, to edit: the release line's, or main.
+  // the branch its fixes go to, to edit: stable's release-X.Y, or main.
   const inRepo = `docs/${page.path.split('/').slice(1).join('/')}`;
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>

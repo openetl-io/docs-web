@@ -18,9 +18,9 @@ To see your own changes to the docs as you write them, clone openetl and openetl
 pnpm dev:local
 ```
 
-The site is at [localhost:3000](http://localhost:3000). It reads the working trees of `../openetl` and `../openetl-connectors`, uncommitted changes included, and shows each change when you save it. `OPENETL_DIR` and `CONNECTORS_DIR` point it at checkouts somewhere else.
+The site is at [localhost:3000](http://localhost:3000). It reads the working trees of `../openetl` and `../openetl-connectors`, uncommitted changes included, and shows each change when you save it. `OPENETL_DIR` and `CONNECTORS_DIR` point it at checkouts somewhere else. Where a page writes `{{version}}`, the site shows OpenETL's newest release, which it reads from GitHub; offline, it shows `{{version}}`.
 
-To see the docs as they are on GitHub, at `main` and at each release, fetch them first:
+To see the docs as they are on GitHub, at `main` and at the newest stable release, fetch them first:
 
 ```sh
 pnpm fetch-docs
