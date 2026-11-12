@@ -67,9 +67,11 @@ export default async function Page(props: PageProps<'/connectors/[[...slug]]'>) 
   // The package's page is its README; the rest are under its docs/.
   const isPackagePage = slug.length === 1 && connector !== undefined;
   const inRepo = isPackagePage ? `${name}/README.md` : page.path;
-  // The package in openetl-connectors: at the tag or commit its page was
-  // fetched from, and on the branch fixes go to, to edit.
+  // The package in openetl-connectors: at main's commit its page was fetched
+  // from, and on main, which fixes go to, to edit. Its newest release is named
+  // apart, as the page may already describe what that release doesn't have.
   const source = connector?.source ?? { ref: 'main', branch: 'main' };
+  const { local } = readSources();
 
   const toc: TOCItemType[] = [...page.data.toc];
   const configs = isPackagePage
@@ -102,9 +104,21 @@ export default async function Page(props: PageProps<'/connectors/[[...slug]]'>) 
             className="text-fd-muted-foreground hover:text-fd-accent-foreground text-sm"
             href={githubURL(repos.connectors, 'tree', source.ref, name)}
           >
-            {source.release ?? 'Unreleased, from main'}
+            {`As of ${source.branch}`}
           </a>
         )}
+        {isPackagePage &&
+          !local &&
+          (source.release ? (
+            <a
+              className="text-fd-muted-foreground hover:text-fd-accent-foreground text-sm"
+              href={`https://github.com/${repos.connectors}/releases/tag/${source.release}`}
+            >
+              {`Newest release ${source.release}`}
+            </a>
+          ) : (
+            <span className="text-fd-muted-foreground text-sm">Not released yet</span>
+          ))}
       </div>
       <DocsBody>
         <MDX components={getMDXComponents({ a: createRelativeLink(connectorsSource, page) })} />
