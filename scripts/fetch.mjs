@@ -4,17 +4,18 @@
 // connector descriptors and schemas), public/schemas/ (JSON Schemas published
 // per version, and at the address each names as its $id), public/logos/ and
 // public/_redirects. All are generated and not committed. Pages are copied as
-// they are.
+// they are, except that {{version}} in openetl's pages becomes the release
+// their version installs.
 //
-//   node scripts/fetch.mjs            openetl at main and each release line at
-//                                     its newest release (from its branch
-//                                     release-X.Y, if that has it, or its tag),
-//                                     and each connector package at its newest
-//                                     release or main, from GitHub
+//   node scripts/fetch.mjs            openetl at main as next and at the newest
+//                                     stable release as stable (from its line's
+//                                     branch release-X.Y, if that has it, or
+//                                     its tag), and each connector package at
+//                                     its newest release or main, from GitHub
 //   node scripts/fetch.mjs --local    the working trees of sibling checkouts
 //                                     (OPENETL_DIR, CONNECTORS_DIR; default
 //                                     ../openetl and ../openetl-connectors),
-//                                     uncommitted changes included, as `next`
+//                                     uncommitted changes included, as next
 //   --local --dev                     the same, then `next dev`, copying again
 //                                     on every change to the checkouts
 //
@@ -59,10 +60,18 @@ const OPENETL_SCHEMAS = {
 // Each schema's $id is https://openetl.io/schemas/PATH, which openetl.io
 // redirects to /schemas/PATH here.
 const SCHEMA_ID = /^https:\/\/openetl\.io\/schemas\/([a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*\.json)$/;
-// A version's own folder of schemas, which an $id's path mustn't land in.
-const VERSION_SLUG = /^(next|v\d+-\d+)(\/|$)/;
+// A version's own folder of schemas, which an $id's path mustn't land in, or
+// one of LEGACY_VERSIONS.
+const VERSION_SLUG = /^(next|stable|v\d+-\d+)(\/|$)/;
+// The versions the site had when each release line of openetl was one. Their
+// paths redirect to the version the site shows by default.
+const LEGACY_VERSIONS = ['v0-1'];
 // Files in openetl's docs/ that are notes for its authors, not pages.
 const NOT_PAGES = new Set(['AGENTS.md', 'CLAUDE.md']);
+// What openetl's pages write where they name the release to install, without
+// its v (v{{version}} where they need the tag). Each version's pages get its
+// release: next's the newest of any kind, stable's its own.
+const VERSION_PLACEHOLDER = '{{version}}';
 const CONNECTOR_FILES = ['openetl-connector.yaml', 'source.schema.json', 'destination.schema.json'];
 
 function git(cwd, ...argv) {
@@ -123,11 +132,12 @@ function releaseTags(repo, published, parse) {
   return releases;
 }
 
-// The tags GitHub has published a release of, drafts left out: a tag is
-// pushed before its release workflow runs, and may never be released.
-// Undefined, and every tag counts, when GitHub's releases of repo don't
-// describe the remote (OPENETL_REMOTE or CONNECTORS_REMOTE replaces it), or
-// can't be read (offline, or over the API's limit without GITHUB_TOKEN).
+// The tags GitHub has published a release of, drafts left out, in the order
+// of GitHub's list of releases, newest first: a tag is pushed before its
+// release workflow runs, and may never be released. Undefined, and every tag
+// counts, when GitHub's releases of repo don't describe the remote
+// (OPENETL_REMOTE or CONNECTORS_REMOTE replaces it), or can't be read
+// (offline, or over the API's limit without GITHUB_TOKEN).
 async function publishedReleases(repo) {
   if (remoteURL(repo) !== `https://github.com/${repo}.git`) return undefined;
   const headers = { accept: 'application/vnd.github+json', 'user-agent': 'openetl-docs-web' };
@@ -146,6 +156,18 @@ async function publishedReleases(repo) {
     return undefined;
   }
   return tags;
+}
+
+// The tag of openetl's newest release of any kind, prerelease included: the
+// first in GitHub's list, as install.sh resolves it, or, when that list isn't
+// known, the highest version among releases. Undefined when there's none.
+function newestRelease(published, releases) {
+  if (published) {
+    for (const tag of published) if (parseVersion(tag)) return tag;
+  }
+  let newest;
+  for (const v of releases) if (!newest || compareVersions(v, newest) > 0) newest = v;
+  return newest?.tag;
 }
 
 // The branches of repo matching pattern, such as release-*, with their commits.
@@ -198,15 +220,16 @@ function workingTree(dir) {
 }
 
 // Makes dest hold exactly the files of src that keep() accepts, copying only
-// what changed, so a running dev server sees one change per edit.
-function mirror(src, dest, keep = () => true, rename = (rel) => rel) {
+// what changed, so a running dev server sees one change per edit. transform,
+// if given, returns what to write for a file, from its path in src and data.
+function mirror(src, dest, keep = () => true, rename = (rel) => rel, transform) {
   const want = new Map();
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, entry.name);
       const rel = path.relative(src, abs);
       if (entry.isDirectory()) walk(abs);
-      else if (entry.isFile() && keep(rel)) want.set(rename(rel), abs);
+      else if (entry.isFile() && keep(rel)) want.set(rename(rel), transform ? transform(rel, fs.readFileSync(abs)) : abs);
     }
   };
   if (fs.existsSync(src)) walk(src);
@@ -214,7 +237,8 @@ function mirror(src, dest, keep = () => true, rename = (rel) => rel) {
 }
 
 // Makes dest hold exactly the files of want, a map from a path relative to
-// dest to the file to copy there, copying only what changed.
+// dest to the file to copy there, or to the data to write, copying only what
+// changed.
 function sync(dest, want) {
   if (fs.existsSync(dest)) {
     for (const rel of fs.readdirSync(dest, { recursive: true })) {
@@ -224,7 +248,7 @@ function sync(dest, want) {
   }
   for (const [rel, from] of want) {
     const to = path.join(dest, rel);
-    const data = fs.readFileSync(from);
+    const data = Buffer.isBuffer(from) ? from : fs.readFileSync(from);
     if (fs.existsSync(to) && data.equals(fs.readFileSync(to))) continue;
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.writeFileSync(to, data);
@@ -256,12 +280,34 @@ function copyFile(from, to) {
   return true;
 }
 
+// A page with {{version}} replaced by the release version.installs names,
+// such as 0.1.0-alpha; the same data when it has none. Pages are left as they
+// are, and listed in unfilled, when the version has no release to name.
+function fillVersion(version, rel, data, unfilled) {
+  if (!/\.mdx?$/.test(rel) || !data.includes(VERSION_PLACEHOLDER)) return data;
+  if (!version.installs) {
+    unfilled.push(rel);
+    return data;
+  }
+  return Buffer.from(data.toString('utf8').replaceAll(VERSION_PLACEHOLDER, version.installs));
+}
+
 // openetl's docs/ at one version, and the files published with it. Adds the
 // version's JSON Schemas to schemas, a map from a path under public/schemas/
 // to the file: in the version's folder, and at the path of the schema's $id,
-// unless an earlier version (a newer release; next comes last) has it.
+// unless an earlier version (stable; next comes last) has it.
 function placeVersion(version, tree, schemas) {
-  mirror(path.join(tree.dir, OPENETL_DOCS), path.join(contentDir, 'docs', version.slug), (rel) => !NOT_PAGES.has(rel));
+  const unfilled = [];
+  mirror(
+    path.join(tree.dir, OPENETL_DOCS),
+    path.join(contentDir, 'docs', version.slug),
+    (rel) => !NOT_PAGES.has(rel),
+    undefined,
+    (rel, data) => fillVersion(version, rel, data, unfilled),
+  );
+  if (unfilled.length > 0) {
+    console.warn(`openetl ${version.checkout}: no release to fill ${VERSION_PLACEHOLDER} in with, so ${unfilled.join(', ')} show it as it is`);
+  }
   if (!copyFile(path.join(tree.dir, OPENETL_OPENAPI), path.join(generatedDir, 'openapi', `${version.slug}.yaml`))) {
     console.warn(`openetl ${version.checkout}: no ${OPENETL_OPENAPI}`);
   }
@@ -361,7 +407,7 @@ function connectorPackages(files) {
 }
 
 function writeIndexes(versions, packages) {
-  // The site's own meta.json files: the versions, newest release first, and
+  // The site's own meta.json files: the versions, stable first, and
   // the connector packages by title.
   const title = (pkg) => readDescriptor(pkg)?.title || pkg;
   const byTitle = [...packages].sort((a, b) => title(a).localeCompare(title(b)));
@@ -374,30 +420,26 @@ function fetchRemote(published) {
   const trees = [];
   const schemas = new Map();
 
-  // openetl: main as next, and each release line at its newest release: from
-  // the line's branch, release-X.Y, which fixes to its docs go to, when the
-  // branch has that release; otherwise from the release's tag.
-  const lines = new Map();
-  for (const v of releaseTags(OPENETL, published.openetl, parseVersion)) {
-    const line = `${v.major}.${v.minor}`;
-    if (!lines.has(line) || compareVersions(v, lines.get(line)) > 0) lines.set(line, v);
+  // openetl: the newest stable line as stable, and main as next. A release
+  // with a suffix, such as v0.2.0-alpha.1 or v0.2.0-rc.1, is a prerelease,
+  // whose docs are next's. stable's pages come from the line's branch,
+  // release-X.Y, which fixes to its docs go to, when the branch has the line's
+  // newest release; otherwise from that release's tag, such as v0.2.0.
+  const releases = releaseTags(OPENETL, published.openetl, parseVersion);
+  const newest = newestRelease(published.openetl, releases);
+  let stable;
+  for (const v of releases) if (v.pre.length === 0 && (!stable || compareVersions(v, stable) > 0)) stable = v;
+  const candidates = [];
+  if (stable) {
+    const name = `release-${stable.major}.${stable.minor}`;
+    let branch;
+    if (remoteBranches(OPENETL, name).has(name)) {
+      if (branchHas(OPENETL, name, stable.commit)) branch = name;
+      else console.warn(`openetl ${name} doesn't have ${stable.tag}: stable's docs are built from the tag`);
+    }
+    candidates.push({ slug: 'stable', title: stable.tag, checkout: branch ?? stable.tag, release: stable.tag, branch, installs: stable.tag.slice(1) });
   }
-  const branches = remoteBranches(OPENETL, 'release-*');
-  const releases = [...lines.entries()]
-    .sort(([, a], [, b]) => compareVersions(b, a))
-    .map(([line, v]) => {
-      const name = `release-${line}`;
-      let branch;
-      if (branches.has(name)) {
-        if (branchHas(OPENETL, name, v.commit)) branch = name;
-        else console.warn(`openetl ${name} doesn't have ${v.tag}: v${line}'s docs are built from the tag`);
-      }
-      // The slug is the line's, so a page's URL stays the same from one of its
-      // releases to the next, and has no dot, which some static servers read
-      // as a file extension.
-      return { slug: `v${line.replace('.', '-')}`, title: v.tag, checkout: branch ?? v.tag, release: v.tag, branch };
-    });
-  const candidates = [...releases, { slug: 'next', title: 'next', checkout: 'main', branch: 'main' }];
+  candidates.push({ slug: 'next', title: 'next', checkout: 'main', branch: 'main', installs: newest?.slice(1) });
 
   // A release from before openetl had docs/ has no version on the site.
   const versions = [];
@@ -412,68 +454,68 @@ function fetchRemote(published) {
     // moves.
     const version = { ...candidate, ref: candidate.checkout === candidate.release ? candidate.release : tree.commit };
     const from = candidate.branch && candidate.release ? `${candidate.branch} (${candidate.release})` : candidate.checkout;
-    console.log(`openetl ${from} → ${version.slug}`);
+    console.log(`openetl ${from} → ${version.slug}, ${VERSION_PLACEHOLDER} ${version.installs ?? 'unfilled'}`);
     versions.push(version);
     trees.push(placeVersion(version, tree, schemas));
   }
 
-  // openetl-connectors: each package at its newest release, from the release
-  // line's branch, release-X.Y, when the branch has that release, as openetl's
-  // versions are, otherwise from the release's tag; or at main until it has
-  // a release. The packages are released together, so the branch holds them
-  // all.
-  const newest = new Map();
+  // openetl-connectors: each package at its newest release, from its tag,
+  // such as postgres/v0.2.0, or at main until it has a release. Packages
+  // version on their own, and fixes to their pages go to main.
+  const newestOfPackage = new Map();
   const packageVersion = (tag) => {
     const [pkg, rest, ...more] = tag.split('/');
     const v = rest && more.length === 0 ? parseVersion(rest) : undefined;
     return v && { ...v, pkg };
   };
   for (const v of releaseTags(CONNECTORS, published.connectors, packageVersion)) {
-    if (!newest.has(v.pkg) || compareVersions(v, newest.get(v.pkg)) > 0) newest.set(v.pkg, v);
+    if (!newestOfPackage.has(v.pkg) || compareVersions(v, newestOfPackage.get(v.pkg)) > 0) newestOfPackage.set(v.pkg, v);
   }
   const main = checkout(CONNECTORS, 'main', ['*/openetl-connector.yaml']);
   const packages = connectorPackages(main.files);
-  const connectorBranches = remoteBranches(CONNECTORS, 'release-*');
-  // One checkout per branch or commit: packages released together share one.
+  // One checkout per commit: packages whose releases are tags of the same
+  // commit share one, as do those at main.
   const groups = new Map();
-  const stale = new Map();
   for (const pkg of packages) {
-    const v = newest.get(pkg);
-    // Links to GitHub point at the package's tag, or at the commit of a branch.
-    let at = { key: 'main', checkout: 'main', branch: 'main' };
-    if (v) {
-      const name = `release-${v.major}.${v.minor}`;
-      if (connectorBranches.has(name) && branchHas(CONNECTORS, name, v.commit)) at = { key: name, checkout: name, branch: name };
-      else {
-        if (connectorBranches.has(name)) stale.set(name, [...(stale.get(name) ?? []), v.tag]);
-        at = { key: v.commit, checkout: v.tag, branch: 'main', ref: v.tag };
-      }
-    }
+    const v = newestOfPackage.get(pkg);
+    // Links to GitHub point at the package's tag, or at main's commit.
+    const at = v ? { key: v.commit, checkout: v.tag, ref: v.tag } : { key: 'main', checkout: 'main' };
     const group = groups.get(at.key) ?? { checkout: at.checkout, pkgs: [] };
-    group.pkgs.push({ pkg, release: v?.tag, branch: at.branch, ref: at.ref });
+    group.pkgs.push({ pkg, release: v?.tag, ref: at.ref });
     groups.set(at.key, group);
-  }
-  for (const [name, tags] of stale) {
-    console.warn(`openetl-connectors ${name} doesn't have ${tags.join(', ')}: their pages are built from the tags`);
   }
   const connectorRefs = {};
   for (const group of groups.values()) {
-    const releases = group.pkgs.map(({ pkg, release }) => release ?? `${pkg} at main`).join(', ');
-    console.log(`openetl-connectors ${group.checkout.startsWith('release-') ? `${group.checkout} (${releases})` : releases}`);
+    console.log(`openetl-connectors ${group.pkgs.map(({ pkg, release }) => release ?? `${pkg} at main`).join(', ')}`);
     const tree = checkout(CONNECTORS, group.checkout, group.pkgs.map(({ pkg }) => `${pkg}/`));
-    for (const { pkg, release, branch, ref = tree.commit } of group.pkgs) {
+    for (const { pkg, release, ref = tree.commit } of group.pkgs) {
       trees.push(placeConnector(pkg, tree, ref));
-      connectorRefs[pkg] = { release, ref, branch };
+      connectorRefs[pkg] = { release, ref, branch: 'main' };
     }
   }
 
   return { versions, packages, trees, connectorRefs, schemas };
 }
 
-function fetchLocal() {
+// --local: openetl's newest release, which next's {{version}} names, from
+// GitHub's releases or else the remote's tags. Undefined offline, when pages
+// show the placeholder as it is.
+function localNewest(published) {
+  if (published) return newestRelease(published, []);
+  try {
+    return newestRelease(undefined, releaseTags(OPENETL, undefined, parseVersion));
+  } catch (err) {
+    console.warn(`openetl: tags: ${err.message.split('\n').find((l) => l.startsWith('fatal:')) ?? err.message}`);
+    return undefined;
+  }
+}
+
+// newest: the tag of openetl's newest release, from localNewest.
+function fetchLocal(newest) {
   const openetlDir = path.resolve(root, process.env.OPENETL_DIR ?? '../openetl');
   const connectorsDir = path.resolve(root, process.env.CONNECTORS_DIR ?? '../openetl-connectors');
-  const version = { slug: 'next', title: 'next', checkout: 'main', ref: 'main', branch: 'main' };
+  const version = { slug: 'next', title: 'next', checkout: 'main', ref: 'main', branch: 'main', installs: newest?.slice(1) };
+  console.log(`openetl ${openetlDir} → next, ${VERSION_PLACEHOLDER} ${version.installs ?? 'unfilled'}`);
 
   const openetl = workingTree(openetlDir);
   const schemas = new Map();
@@ -556,7 +598,7 @@ async function fetchLogos(packages) {
 }
 
 function run(published) {
-  const result = local ? fetchLocal() : fetchRemote(published);
+  const result = local ? fetchLocal(published.newest) : fetchRemote(published);
   const { versions, packages, trees, connectorRefs, schemas } = result;
   sync(schemasDir, schemas);
 
@@ -587,8 +629,20 @@ function run(published) {
   }
 
   writeIndexes(versions, packages);
-  // Cloudflare Pages' redirects: /docs to the version the site shows by default.
-  writeIfChanged(path.join(root, 'public', '_redirects'), `/docs /docs/${versions[0].slug} 302\n`);
+  // Cloudflare's redirects: /docs, and the paths of LEGACY_VERSIONS, to the
+  // version the site shows by default.
+  const to = versions[0].slug;
+  const redirects = [`/docs /docs/${to}`];
+  for (const slug of LEGACY_VERSIONS.filter((s) => !keepVersions.has(s))) {
+    redirects.push(
+      `/docs/${slug} /docs/${to}`,
+      `/docs/${slug}/* /docs/${to}/:splat`,
+      `/llms.mdx/docs/${slug}.md /llms.mdx/docs/${to}.md`,
+      `/llms.mdx/docs/${slug}/* /llms.mdx/docs/${to}/:splat`,
+      `/schemas/${slug}/* /schemas/${to}/:splat`,
+    );
+  }
+  writeIfChanged(path.join(root, 'public', '_redirects'), redirects.map((r) => `${r} 302\n`).join(''));
   // Compiled pages hold links resolved against these sources, which Next.js's
   // cache doesn't know about: a fetch of other refs starts it afresh.
   const sourcesFile = path.join(generatedDir, 'sources.json');
@@ -599,18 +653,20 @@ function run(published) {
   }
   writeJSON(sourcesFile, {
     local,
-    // The version the site shows by default: the newest release, or next.
+    // The version the site shows by default: stable, or next until there's a
+    // stable release.
     defaultVersion: versions[0].slug,
-    versions: versions.map(({ slug, title, ref, release, branch }) => ({ slug, title, ref, release, branch })),
+    versions: versions.map(({ slug, title, ref, release, branch, installs }) => ({ slug, title, ref, release, branch, installs })),
     connectors: connectorRefs,
     trees,
   });
   return result;
 }
 
-// What counts as a release, read once: a run in --dev reads the working trees.
+// What counts as a release, read once: a run in --dev reads the working trees
+// again, not the releases. --local needs only openetl's newest.
 const published = local
-  ? undefined
+  ? { newest: localNewest(await publishedReleases(OPENETL)) }
   : { openetl: await publishedReleases(OPENETL), connectors: await publishedReleases(CONNECTORS) };
 let result = run(published);
 await fetchLogos(result.packages);

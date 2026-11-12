@@ -79,11 +79,10 @@ function versionsPlugin(): LoaderPlugin {
       for (const v of sources.versions) {
         const meta = storage.read(`${v.slug}/meta.json`);
         if (meta?.format !== 'meta') continue;
-        const latest = v.slug === sources.defaultVersion && v.release;
         meta.data = {
           ...meta.data,
           title: v.title,
-          description: v.release ? (latest ? 'The newest release' : 'An earlier release') : 'From main, unreleased',
+          description: v.release ? 'The newest stable release' : 'From main, with what is not released yet',
           icon: v.release ? 'Tag' : 'GitBranch',
           root: 'version',
         };
