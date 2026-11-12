@@ -30,12 +30,13 @@ The format the pages follow is [openetl's docs/AGENTS.md](https://github.com/ope
 
 The site's address, `https://docs.openetl.io`, is `siteUrl` in `lib/shared.ts`. Each page names its URL there as canonical, so a preview deployment points search engines at the site, and `sitemap.xml` and `llms.txt` use full URLs. `public/_headers`, committed, has Cloudflare cache Next.js's build output, whose names change with its content, for a year, and lets other sites fetch the schemas. `public/_redirects`, generated, redirects `/docs` to the default version, and the paths of the versions the site no longer has to it (see [Versions](#versions)).
 
-Cloudflare builds and deploys the site from its GitHub app, as the Worker `openetl-docs`, which serves `out/` as static assets: a push to `main` to `docs.openetl.io`, a push to another branch as a preview. `wrangler.toml` has the build command, `pnpm fetch-docs && pnpm build`, which checks the links too, so a broken link fails the deploy and the site stays as it was. Pages are served without a trailing slash, as their canonical URLs have none, and a path with no file gets `404.html`. The Node.js version is in `.node-version`.
+Cloudflare builds and deploys the site from its GitHub app, as the Worker `openetl-docs`, which serves `out/` as static assets: a push to `main` to `docs.openetl.io`, a push to another branch as a preview, and a call to the deploy hook builds and deploys `main` again (see [When it builds](#when-it-builds)). `wrangler.toml` has the build command, `pnpm fetch-docs && pnpm build`, which checks the links too, so a broken link fails the deploy and the site stays as it was. `wrangler deploy`, the deploy command of Cloudflare's build, runs it, so the dashboard's own build command stays empty. Pages are served without a trailing slash, as their canonical URLs have none, and a path with no file gets `404.html`. The Node.js version is in `.node-version`.
 
 Cloudflare's dashboard holds the rest:
 
 - the build secret `GITHUB_TOKEN`, a fine-grained token with read-only access to public repositories, for the published releases and their notes. Without it the build shares GitHub's unauthenticated limit with whatever else builds from the same address, and when that runs out every tag counts as released, `{{version}}` names the highest tag, and the changelog is empty;
-- the custom domain, `docs.openetl.io`, and the deploy hook that `site.yml` calls, for branch `main`.
+- the custom domain, `docs.openetl.io`;
+- the deploy hook, for branch `main`. Its URL is a secret here, `CLOUDFLARE_DEPLOY_HOOK`, and in openetl and openetl-connectors, whose workflows call it.
 
 ## Schemas
 
@@ -63,11 +64,17 @@ Release notes are GitHub Releases, written when a release is made. The fetch rea
 
 ## When it builds
 
+Cloudflare builds and deploys the site:
+
+- on a push to this repository: `main` to `docs.openetl.io`, another branch as a preview;
+- when its deploy hook is called, which builds `main` again. openetl and openetl-connectors call it from their workflows on a push to `main` (or, in openetl, to a `release-X.Y` branch) that changes what the site reads, and when they publish a release, which can change `{{version}}`, `stable`, a connector's page and the changelog. Nothing polls.
+
 `.github/workflows/site.yml` fetches, type-checks, builds and checks the links:
 
 - on each pull request, and on a push to `main`, which Cloudflare builds and deploys as well;
-- every 30 minutes on `main`, where it builds only when what it fetched, or this repository, changed since the last build: a cache entry named after a hash of both records each build. Then it calls the Worker's deploy hook, the URL in the secret `CLOUDFLARE_DEPLOY_HOOK`, and Cloudflare builds and deploys `main` again. So a change to a page, a release branch or a published release reaches the site within about half an hour, and the content repositories need no token to tell it. Without the secret, the change waits for the next push to `main`;
-- when run by hand (`gh workflow run site.yml`), which always builds and calls the hook.
+- when run by hand on `main` (`gh workflow run site.yml`), after which it calls the deploy hook, the URL in the secret `CLOUDFLARE_DEPLOY_HOOK`, so that Cloudflare builds and deploys `main` again: for a change whose call to the hook failed.
+
+A change to a content repository that breaks the site's build fails Cloudflare's build, and the site stays as it was. That shows in Cloudflare's dashboard, not in the content repository's checks.
 
 ## Working on it
 

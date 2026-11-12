@@ -1,15 +1,14 @@
 name: site
 
-# Builds the site and checks its links. Cloudflare deploys it from each push
-# (wrangler.toml). Every 30 minutes this fetches openetl and
-# openetl-connectors again and, when that or this repository changed since
-# the last build, calls the deploy hook in CLOUDFLARE_DEPLOY_HOOK.
+# Builds the site and checks its links. Cloudflare builds and deploys this
+# repository's pushes itself (wrangler.toml), and openetl and
+# openetl-connectors call its deploy hook when what the site reads changes.
+# Run by hand on main, this builds and then calls the hook, in
+# CLOUDFLARE_DEPLOY_HOOK, so Cloudflare builds and deploys main again.
 on:
   pull_request:
   push:
     branches: [main]
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -35,42 +34,15 @@ jobs:
       - run: pnpm fetch-docs
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - name: What the site is built from
-        id: inputs
-        run: |
-          files=$(ls -d content generated public/schemas public/logos public/_redirects 2>/dev/null)
-          sum=$({ echo "$GITHUB_SHA"; find $files -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum; } | sha256sum | cut -d' ' -f1)
-          echo "key=site-built-$sum" >> "$GITHUB_OUTPUT"
-      # A scheduled run stops here when that has been built already.
-      - name: Built already
-        id: built
-        if: github.event_name == 'schedule'
-        uses: actions/cache/restore@v4
-        with:
-          path: .built
-          key: ${{ steps.inputs.outputs.key }}
-          lookup-only: true
-      - if: steps.built.outputs.cache-hit != 'true'
-        run: pnpm typecheck
-      - if: steps.built.outputs.cache-hit != 'true'
-        run: pnpm build
-      # Cloudflare builds a push itself.
+      - run: pnpm typecheck
+      - run: pnpm build
       - name: Have Cloudflare build and deploy
-        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.built.outputs.cache-hit != 'true'
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
         env:
           HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
         run: |
           if [ -z "$HOOK" ]; then
-            echo "::warning::No CLOUDFLARE_DEPLOY_HOOK: the site gets this with the next push to main"
-            exit 0
+            echo "::error::No CLOUDFLARE_DEPLOY_HOOK: the site gets this with the next push to main"
+            exit 1
           fi
           curl -fsS -X POST "$HOOK" > /dev/null
-      # Recorded once the build, and the call to the hook, succeeded.
-      - name: Record the build
-        if: github.event_name != 'pull_request' && steps.built.outputs.cache-hit != 'true'
-        run: echo "${{ steps.inputs.outputs.key }}" > .built
-      - if: github.event_name != 'pull_request' && steps.built.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .built
-          key: ${{ steps.inputs.outputs.key }}
