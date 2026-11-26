@@ -585,6 +585,77 @@ async function fetchLogos(packages) {
   }
 }
 
+// The sections of a version's docs, as placed in content/docs/VERSION: each
+// folder with a page in it, and each page beside index.md. Returns each by
+// name, and whether /docs/VERSION/NAME is itself a page.
+function docsSections(version) {
+  const dir = path.join(contentDir, 'docs', version);
+  const hasPage = (d) => fs.readdirSync(d, { recursive: true }).some((f) => /\.mdx?$/.test(f));
+  const sections = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory() && hasPage(abs)) {
+      sections.push({ name: entry.name, folder: true, page: ['index.md', 'index.mdx'].some((f) => fs.existsSync(path.join(abs, f))) });
+    } else if (entry.isFile() && /\.mdx?$/.test(entry.name) && !/^index\.mdx?$/.test(entry.name)) {
+      sections.push({ name: entry.name.replace(/\.mdx?$/, ''), folder: false, page: true });
+    }
+  }
+  // A page and a folder of the same name, such as use.md beside use/, are one
+  // section.
+  const byName = new Map();
+  for (const s of sections) {
+    const seen = byName.get(s.name);
+    byName.set(s.name, seen ? { name: s.name, folder: seen.folder || s.folder, page: seen.page || s.page } : s);
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Cloudflare's limits on public/_redirects: rules with a splat or placeholder
+// are dynamic, the rest static. Rules past a limit would be ignored.
+const MAX_STATIC_REDIRECTS = 2000;
+const MAX_DYNAMIC_REDIRECTS = 100;
+
+// Cloudflare's redirects, in public/_redirects. Cloudflare applies them before
+// it serves a file, whether or not the file exists, and the first rule that
+// matches wins.
+//
+// - /docs to the default version, `to`: temporary, as stable replaces next as
+//   the default once there's a stable release.
+// - The paths of LEGACY_VERSIONS to the default version: permanent.
+// - Each section of the default version without a version, such as
+//   /docs/get-started/overview, to the same path in it: temporary, as the
+//   default version changes. A section named like a version would catch that
+//   version's own pages, so it gets none.
+function writeRedirects(to, keepVersions) {
+  const rules = [`/docs /docs/${to} 302`];
+  for (const slug of LEGACY_VERSIONS.filter((s) => !keepVersions.has(s))) {
+    rules.push(
+      `/docs/${slug} /docs/${to} 301`,
+      `/docs/${slug}/* /docs/${to}/:splat 301`,
+      `/llms.mdx/docs/${slug}.md /llms.mdx/docs/${to}.md 301`,
+      `/llms.mdx/docs/${slug}/* /llms.mdx/docs/${to}/:splat 301`,
+      `/schemas/${slug}/* /schemas/${to}/:splat 301`,
+    );
+  }
+  for (const section of docsSections(to)) {
+    if (VERSION_SLUG.test(section.name) || LEGACY_VERSIONS.includes(section.name) || keepVersions.has(section.name)) {
+      console.warn(`openetl docs/${section.name}: named like a version, so /docs/${section.name} doesn't redirect to /docs/${to}/${section.name}`);
+      continue;
+    }
+    if (section.page) rules.push(`/docs/${section.name} /docs/${to}/${section.name} 302`);
+    if (section.folder) rules.push(`/docs/${section.name}/* /docs/${to}/${section.name}/:splat 302`);
+  }
+  // Cloudflare's docs ask for static rules before dynamic ones. No two rules
+  // here match the same path, so the order changes nothing else.
+  const dynamic = (rule) => /[*:]/.test(rule.split(' ')[0]);
+  const ordered = [...rules.filter((r) => !dynamic(r)), ...rules.filter(dynamic)];
+  const count = rules.filter(dynamic).length;
+  if (count > MAX_DYNAMIC_REDIRECTS || rules.length - count > MAX_STATIC_REDIRECTS) {
+    throw new Error(`public/_redirects: ${rules.length - count} static and ${count} dynamic rules, over Cloudflare's ${MAX_STATIC_REDIRECTS} and ${MAX_DYNAMIC_REDIRECTS}`);
+  }
+  writeIfChanged(path.join(root, 'public', '_redirects'), ordered.map((r) => `${r}\n`).join(''));
+}
+
 function run(published) {
   const result = local ? fetchLocal(published.newest) : fetchRemote(published);
   const { versions, packages, trees, connectorRefs, schemas } = result;
@@ -617,20 +688,7 @@ function run(published) {
   }
 
   writeIndexes(versions, packages);
-  // Cloudflare's redirects: /docs, and the paths of LEGACY_VERSIONS, to the
-  // version the site shows by default.
-  const to = versions[0].slug;
-  const redirects = [`/docs /docs/${to}`];
-  for (const slug of LEGACY_VERSIONS.filter((s) => !keepVersions.has(s))) {
-    redirects.push(
-      `/docs/${slug} /docs/${to}`,
-      `/docs/${slug}/* /docs/${to}/:splat`,
-      `/llms.mdx/docs/${slug}.md /llms.mdx/docs/${to}.md`,
-      `/llms.mdx/docs/${slug}/* /llms.mdx/docs/${to}/:splat`,
-      `/schemas/${slug}/* /schemas/${to}/:splat`,
-    );
-  }
-  writeIfChanged(path.join(root, 'public', '_redirects'), redirects.map((r) => `${r} 302\n`).join(''));
+  writeRedirects(versions[0].slug, keepVersions);
   // Compiled pages hold links resolved against these sources, which Next.js's
   // cache doesn't know about: a fetch of other refs starts it afresh.
   const sourcesFile = path.join(generatedDir, 'sources.json');
