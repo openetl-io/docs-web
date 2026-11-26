@@ -1,13 +1,15 @@
 import { Markdown } from 'fumadocs-core/content/md';
 import type { Metadata } from 'next';
 import { readChangelog } from '@/lib/changelog';
+import { pageMetadata } from '@/lib/metadata';
 import { repos } from '@/lib/shared';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: 'Changelog',
   description: "OpenETL's releases and their notes.",
-  alternates: { canonical: '/changelog' },
-};
+  url: '/changelog',
+  type: 'website',
+});
 
 export default function ChangelogPage() {
   const changelog = readChangelog();

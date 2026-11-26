@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
-import { connectorsLlms, connectorsSource, docsLlms, source } from '@/lib/source';
+import { markdownRoute } from '@/lib/shared';
+import { connectorsLlms, connectorsSource, docsLlms, markdownURL, source } from '@/lib/source';
 
 export const dynamic = 'force-static';
 // The site is a static export: a path not generated at build is a 404.
@@ -23,13 +24,11 @@ export async function GET(_req: Request, { params }: RouteContext<'/llms.mdx/[..
   return new Response(markdown, { headers: { 'Content-Type': 'text/markdown; charset=utf-8' } });
 }
 
+// The pages that have a Markdown copy, which their pages link to as an
+// alternate (lib/source.tsx's markdownURL).
 export function generateStaticParams() {
-  const md = (url: string) => {
-    const parts = url.split('/').filter(Boolean);
-    parts[parts.length - 1] += '.md';
-    return { slug: parts };
-  };
-  return [...source.getPages(), ...connectorsSource.getPages()]
-    .filter((p) => !('getOpenAPIPageProps' in p.data))
-    .map((p) => md(p.url));
+  return [...source.getPages(), ...connectorsSource.getPages()].flatMap((p) => {
+    const url = markdownURL(p);
+    return url ? [{ slug: url.slice(`${markdownRoute}/`.length).split('/') }] : [];
+  });
 }

@@ -196,7 +196,8 @@ function branchHas(repo, branch, commit) {
 }
 
 // A shallow, sparse, blobless clone of repo at ref with only paths checked out.
-// Returns its directory, the commit and every path in the repository at ref.
+// Returns its directory, the commit and its date, and every path in the
+// repository at ref.
 function checkout(repo, ref, paths) {
   const dir = path.join(cacheDir, `${repo.replace('/', '__')}@${ref.replaceAll('/', '__')}`);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -206,6 +207,7 @@ function checkout(repo, ref, paths) {
   return {
     dir,
     commit: git(dir, 'rev-parse', 'HEAD'),
+    date: git(dir, 'log', '-1', '--format=%cI', 'HEAD'),
     files: git(dir, 'ls-tree', '-r', '--name-only', 'HEAD').split('\n').filter(Boolean),
   };
 }
@@ -330,7 +332,7 @@ function placeVersion(version, tree, schemas) {
     const at = path.join(...idPath.split('/'));
     if (!schemas.has(at)) schemas.set(at, file);
   }
-  return { dir: `content/docs/${version.slug}`, repo: OPENETL, ref: version.ref, root: OPENETL_DOCS, files: tree.files };
+  return { dir: `content/docs/${version.slug}`, repo: OPENETL, ref: version.ref, date: tree.date, root: OPENETL_DOCS, files: tree.files };
 }
 
 // A logo that is a file beside openetl-connector.yaml, such as ./logo.svg,
@@ -393,6 +395,7 @@ function placeConnector(pkg, tree, ref) {
     dir: `content/connectors/${pkg}`,
     repo: CONNECTORS,
     ref,
+    date: tree.date,
     root: pkg,
     renamed: { 'index.md': 'README.md' },
     files: tree.files,
