@@ -12,11 +12,13 @@ import {
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ConfigReference } from '@/components/config-reference';
+import { JsonLd } from '@/components/json-ld';
 import { readChangelog } from '@/lib/changelog';
 import { getMDXComponents } from '@/components/mdx';
 import { type Connector, getConnector, getConnectors } from '@/lib/connectors';
-import { connectorsRoute, docsRoute, markdownRoute, repos } from '@/lib/shared';
-import { connectorsSource } from '@/lib/source';
+import { breadcrumbJsonLd, pageMetadata } from '@/lib/metadata';
+import { connectorsRoute, docsRoute, repos } from '@/lib/shared';
+import { connectorCrumbs, connectorsSource, markdownURL } from '@/lib/source';
 import { githubURL, readSources } from '@/lib/sources';
 
 const roleTitle = { source: 'Source', destination: 'Destination' } as const;
@@ -89,15 +91,17 @@ export default async function Page(props: PageProps<'/connectors/[[...slug]]'>) 
 
   const MDX = page.data.body;
   const secretsHref = `${docsRoute}/${readSources().defaultVersion}/pipelines#secrets`;
+  const markdown = markdownURL(page);
   return (
     <DocsPage toc={toc} full={page.data.full}>
+      <JsonLd data={breadcrumbJsonLd(connectorCrumbs(page))} />
       <div className="flex items-center gap-3">
         {isPackagePage && <Logo connector={connector} className="size-8 object-contain" />}
         <DocsTitle>{page.data.title}</DocsTitle>
       </div>
       <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
       <div className="flex flex-row flex-wrap items-center gap-2 border-b pb-6">
-        <MarkdownCopyButton markdownUrl={`${markdownRoute}${page.url}.md`} />
+        {markdown && <MarkdownCopyButton markdownUrl={markdown} />}
         <EditOnGitHub href={githubURL(repos.connectors, 'blob', source.branch, inRepo)} />
         {isPackagePage && (
           <a
@@ -166,9 +170,20 @@ export function generateStaticParams() {
 export async function generateMetadata(props: PageProps<'/connectors/[[...slug]]'>): Promise<Metadata> {
   const { slug } = await props.params;
   if (!slug || slug.length === 0) {
-    return { title: 'Connectors', description: 'The official connectors for OpenETL.', alternates: { canonical: connectorsRoute } };
+    return pageMetadata({
+      title: 'Connectors',
+      description: 'The official connectors for OpenETL.',
+      url: connectorsRoute,
+      type: 'website',
+    });
   }
   const page = connectorsSource.getPage(slug);
   if (!page) return {};
-  return { title: page.data.title, description: page.data.description, alternates: { canonical: page.url } };
+  return pageMetadata({
+    title: page.data.title,
+    description: page.data.description,
+    url: page.url,
+    type: 'article',
+    markdown: markdownURL(page),
+  });
 }

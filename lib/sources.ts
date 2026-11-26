@@ -30,6 +30,10 @@ export interface Tree {
   repo: string;
   // The commit or tag links to GitHub point at.
   ref: string;
+  // The committer date of the commit dir was fetched from, ISO 8601: the same
+  // for every page of the tree. Undefined with --local, whose working trees
+  // can hold changes that aren't committed.
+  date?: string;
   // The folder of the repository that dir holds, such as docs.
   root: string;
   // Files renamed when placed, by their name in dir.

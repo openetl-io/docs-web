@@ -2,12 +2,14 @@ import { Card, Cards } from 'fumadocs-ui/components/card';
 import { buttonVariants } from 'fumadocs-ui/components/ui/button';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { JsonLd } from '@/components/json-ld';
 import { connectorsSection, sections } from '@/lib/layout.shared';
-import { docsRoute } from '@/lib/shared';
+import { definition, pageMetadata, websiteJsonLd } from '@/lib/metadata';
+import { docsRoute, siteTitle } from '@/lib/shared';
 import { source } from '@/lib/source';
 import { readSources } from '@/lib/sources';
 
-export const metadata: Metadata = { alternates: { canonical: '/' } };
+export const metadata: Metadata = pageMetadata({ title: siteTitle, description: definition, url: '/', type: 'website' });
 
 export default function HomePage() {
   const { defaultVersion, versions } = readSources();
@@ -20,6 +22,7 @@ export default function HomePage() {
 
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-(--fd-layout-width) flex-1 flex-col gap-12 px-4 py-16 outline-none md:px-8">
+      <JsonLd data={websiteJsonLd(definition)} />
       <section className="flex flex-col gap-4">
         <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">OpenETL documentation</h1>
         <p className="text-fd-muted-foreground max-w-2xl text-lg">

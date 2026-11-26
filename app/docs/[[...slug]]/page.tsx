@@ -11,12 +11,14 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { APIReference } from '@/components/api-reference';
+import { JsonLd } from '@/components/json-ld';
 import { getMDXComponents } from '@/components/mdx';
-import { markdownRoute, repos } from '@/lib/shared';
-import { source, versionOf } from '@/lib/source';
+import { breadcrumbJsonLd, pageMetadata } from '@/lib/metadata';
+import { repos } from '@/lib/shared';
+import { canonicalUrl, docsCrumbs, markdownURL, source, versionOf } from '@/lib/source';
 import { githubURL, readSources } from '@/lib/sources';
 
-// /docs is the default version's docs. Cloudflare Pages redirects it with
+// /docs is the default version's docs. Cloudflare redirects it with
 // public/_redirects, which the fetch writes; this page does it elsewhere.
 function ToDefaultVersion() {
   const to = `/docs/${readSources().defaultVersion}`;
@@ -37,10 +39,12 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   if (!slug || slug.length === 0) return <ToDefaultVersion />;
   const page = source.getPage(slug);
   if (!page) notFound();
+  const breadcrumbs = <JsonLd data={breadcrumbJsonLd(docsCrumbs(page))} />;
 
   if (page.type !== 'docs') {
     return (
       <DocsPage full toc={page.data.toc}>
+        {breadcrumbs}
         <DocsTitle>{page.data.title}</DocsTitle>
         <DocsDescription>{page.data.description}</DocsDescription>
         <DocsBody>
@@ -55,12 +59,14 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   // The page in openetl: docs/ at the tag or commit it was fetched from, and on
   // the branch its fixes go to, to edit: stable's release-X.Y, or main.
   const inRepo = `docs/${page.path.split('/').slice(1).join('/')}`;
+  const markdown = markdownURL(page);
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
+      {breadcrumbs}
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
       <div className="flex flex-row items-center gap-2 border-b pb-6">
-        <MarkdownCopyButton markdownUrl={`${markdownRoute}${page.url}.md`} />
+        {markdown && <MarkdownCopyButton markdownUrl={markdown} />}
         <EditOnGitHub href={githubURL(repos.openetl, 'blob', version?.branch ?? 'main', inRepo)} />
         {version?.release && (
           <a
@@ -85,14 +91,18 @@ export function generateStaticParams() {
   return [{ slug: [] }, ...source.generateParams()];
 }
 
+// The page names the same page in the default version as canonical, when it
+// has it (lib/canonical.ts), so the versions' copies aren't indexed as two.
 export async function generateMetadata(props: PageProps<'/docs/[[...slug]]'>): Promise<Metadata> {
   const { slug } = await props.params;
   const page = source.getPage(slug);
   if (!page) return {};
   const version = versionOf(page);
-  return {
+  return pageMetadata({
     title: version && version.slug !== readSources().defaultVersion ? `${page.data.title} (${version.title})` : page.data.title,
     description: page.data.description,
-    alternates: { canonical: page.url },
-  };
+    url: canonicalUrl(page),
+    type: 'article',
+    markdown: markdownURL(page),
+  });
 }

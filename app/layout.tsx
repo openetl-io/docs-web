@@ -3,14 +3,18 @@ import '@fontsource-variable/geist-mono';
 import './global.css';
 import type { Metadata } from 'next';
 import { Provider } from '@/components/provider';
-import { siteUrl } from '@/lib/shared';
+import { defaultSocial, definition } from '@/lib/metadata';
+import { siteName, siteTitle, siteUrl } from '@/lib/shared';
 import { readSources } from '@/lib/sources';
 
+// What a page that gives no metadata of its own has. Pages give theirs with
+// pageMetadata (lib/metadata.ts).
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: { template: '%s · OpenETL', default: 'OpenETL documentation' },
-  description: 'Guides and reference for using, running, integrating and extending OpenETL.',
+  title: { template: `%s · ${siteName}`, default: siteTitle },
+  description: definition,
   icons: { icon: '/logo.svg' },
+  ...defaultSocial,
 };
 
 export default function Layout({ children }: LayoutProps<'/'>) {

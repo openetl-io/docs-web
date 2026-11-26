@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { repos } from '@/lib/shared';
+import { homeUrl, repos } from '@/lib/shared';
 
 export function SiteFooter() {
   return (
@@ -8,6 +8,7 @@ export function SiteFooter() {
         <span>OpenETL documentation</span>
         <nav aria-label="Footer" className="flex flex-wrap gap-x-6 [&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center [&_a]:rounded-md [&_a]:underline-offset-4 [&_a:hover]:text-fd-foreground [&_a:hover]:underline [&_a:focus-visible]:ring-2 [&_a:focus-visible]:ring-fd-ring [&_a:focus-visible]:outline-none">
           <Link href="/changelog">Changelog</Link>
+          <a href={homeUrl}>{new URL(homeUrl).host}</a>
           <a href={`https://github.com/${repos.openetl}`}>GitHub</a>
           <Link href="/llms.txt">llms.txt</Link>
         </nav>

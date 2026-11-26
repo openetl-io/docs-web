@@ -4,7 +4,7 @@ import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 import { Blocks } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { SidebarFooter } from '@/components/sidebar-footer';
-import { connectorsRoute, docsRoute, repos, siteName } from './shared';
+import { connectorsRoute, docsRoute, homeUrl, repos, siteName } from './shared';
 import { readSources } from './sources';
 
 export function baseOptions(): BaseLayoutProps {
@@ -24,6 +24,8 @@ export function baseOptions(): BaseLayoutProps {
       { text: 'Docs', url: `${docsRoute}/${defaultVersion}`, active: 'nested-url' },
       { text: 'Connectors', url: connectorsRoute, active: 'nested-url' },
       { text: 'Changelog', url: '/changelog' },
+      // OpenETL's website, named by its address.
+      { text: new URL(homeUrl).host, url: homeUrl },
     ],
   };
 }
